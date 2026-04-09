@@ -34,13 +34,14 @@ Get the full content of a specific note.
 ### Write operations
 
 #### create-note
-Create a new note. Content supports markdown (converted to HTML for Apple Notes).
+Create a new note. A short unique key (e.g. `k7x2m`) is automatically appended to the title for easy lookup later. Content supports markdown.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `title` | string | yes | The title of the note |
 | `content` | string | yes | The content (markdown supported) |
 | `folder` | string | no | Folder to save the note to |
+| `noKey` | boolean | no | If true, do not append a lookup key to the title |
 
 #### update-note
 Update the body content of an existing note. Note titles cannot be changed (Apple Notes limitation).
@@ -74,6 +75,19 @@ Create a new folder in Apple Notes.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | yes | The name for the new folder |
+
+### Utility
+
+#### generate-key
+Generate a short unique key for note identification. Use this for existing notes — manually append the key to the note title in Apple Notes, then find the note instantly via `search-notes`.
+
+## Note keys
+
+Every note created with `create-note` automatically gets a short key (5 lowercase alphanumeric characters, e.g. `k7x2m`) appended to the title. This allows instant, unambiguous lookup via `search-notes` — just search for the key.
+
+For existing notes, use `generate-key` to get a key, then manually add it to the note title in Apple Notes.
+
+Keys are designed for easy voice input: only lowercase letters and digits, no special characters, no case sensitivity.
 
 ## Limitations
 

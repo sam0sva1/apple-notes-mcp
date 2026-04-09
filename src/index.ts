@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { AppleNotesManager } from './services/appleNotesManager.js';
+import { generateNoteKey } from './utils/noteKey.js';
 
 const server = new McpServer(
   {
@@ -15,8 +16,10 @@ const server = new McpServer(
       'Use list-folders to see available folders. ' +
       'Use list-notes to browse notes (optionally filter by folder). ' +
       'Use search-notes to find notes by title, then get-note-content to read their full content. ' +
-      'Use create-note to create new notes, update-note to modify content, ' +
-      'move-note to reorganize, and delete-note to remove notes. ' +
+      'Use create-note to create new notes (a unique lookup key is appended to the title automatically). ' +
+      'Use update-note to modify content, move-note to reorganize, and delete-note to remove notes. ' +
+      'Use generate-key to create a key for an existing note (user adds it to the title manually). ' +
+      'To find a note by key, use search-notes with the key as query. ' +
       'Note titles cannot be renamed (Apple Notes limitation). ' +
       'When multiple notes share the same title, specify a folder to disambiguate.',
   },
@@ -144,18 +147,22 @@ server.tool(
 
 server.tool(
   'create-note',
-  'Create a new note in Apple Notes',
+  'Create a new note in Apple Notes. A short unique key is appended to the title for easy lookup later',
   {
     title: z.string().min(1).describe('The title of the note'),
     content: z.string().min(1).describe('The content of the note (markdown supported)'),
     folder: z.string().optional().describe('Folder to save the note to'),
+    noKey: z.boolean().optional().describe('If true, do not append a lookup key to the title'),
   },
   { destructiveHint: true },
-  async ({ title, content, folder }) => {
+  async ({ title, content, folder, noKey }) => {
     try {
-      notesManager.createNote(title, content, folder);
+      const key = noKey ? null : generateNoteKey();
+      const fullTitle = key ? `${title} ${key}` : title;
+      notesManager.createNote(fullTitle, content, folder);
+      const keyInfo = key ? ` (key: ${key})` : '';
       return {
-        content: [{ type: 'text', text: `Note created: "${title}"` }],
+        content: [{ type: 'text', text: `Note created: "${fullTitle}"${keyInfo}` }],
       };
     } catch (error) {
       const hint = folder ? ` Folder "${folder}" may not exist.` : '';
@@ -294,6 +301,26 @@ server.tool(
         isError: true,
       };
     }
+  },
+);
+
+// --- Utility tools ---
+
+server.tool(
+  'generate-key',
+  'Generate a short unique key for note identification. The user can manually append it to an existing note title for easy lookup later',
+  {},
+  { readOnlyHint: true },
+  async () => {
+    const key = generateNoteKey();
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Generated key: ${key}\n\nAppend this to a note title to enable quick lookup via search.`,
+        },
+      ],
+    };
   },
 );
 
