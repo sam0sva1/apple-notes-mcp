@@ -89,6 +89,30 @@ For existing notes, use `generate-key` to get a key, then manually add it to the
 
 Keys are designed for easy voice input: only lowercase letters and digits, no special characters, no case sensitivity.
 
+## Full mode vs Basic mode
+
+The server operates in two modes depending on whether it can access the Apple Notes SQLite database directly.
+
+| Feature | Full mode (with FDA) | Basic mode |
+|---------|---------------------|------------|
+| List notes | With metadata (dates, folder, preview) | Titles only |
+| Search notes | Title + content preview | Title only |
+| Date filters | Yes (createdAfter, modifiedAfter) | No |
+| Create / update / delete / move | Yes | Yes |
+| Folder operations | Yes | Yes |
+
+### Enabling full mode
+
+Grant **Full Disk Access** to the application that runs the MCP server:
+
+1. Open **System Settings** > **Privacy & Security** > **Full Disk Access**
+2. Add your terminal app (Terminal.app, iTerm, Warp, etc.) or the specific application that launches the server (e.g. Claude Desktop)
+3. Restart the MCP server
+
+Full Disk Access allows the server to read (never write) the Apple Notes SQLite database at `~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite`.
+
+**Important:** Granting Full Disk Access to your terminal does not change how Claude Code operates — Claude Code still asks for permission before every action (file edits, shell commands, etc.) unless you have explicitly disabled that.
+
 ## Limitations
 
 Apple Notes exposes a minimal AppleScript API compared to apps like Mail or Calendar. The following limitations are inherent to Apple's automation interface — not design choices of this server.
@@ -97,9 +121,9 @@ Apple Notes exposes a minimal AppleScript API compared to apps like Mail or Cale
 
 These features are frequently requested in the community ([Siddhant-K-code/mcp-apple-notes](https://github.com/Siddhant-K-code/mcp-apple-notes/pulls), [RafalWilinski/mcp-apple-notes](https://github.com/RafalWilinski/mcp-apple-notes/issues)) but are not possible through the AppleScript Notes API:
 
-- **Full-text search by note content** — AppleScript's `where` clause only filters by `name` (title). Searching note bodies would require fetching every note and filtering client-side, which doesn't scale. Some projects work around this with vector databases and embeddings, but that adds significant complexity and dependencies
+- **Full-text search by note content** — in basic mode, search only matches titles. In full mode (with FDA), search also matches the first ~255 characters of note content. True full-text search of the entire body is not supported
 - **Rename notes** — the `name` property is read-only in the AppleScript dictionary. The only workaround is to create a new note and delete the old one, which loses metadata
-- **Unique note IDs** — notes are identified by title, not by a stable ID. AppleScript provides no direct `get note by id` accessor. Duplicate titles cause ambiguity — use the `folder` parameter to disambiguate
+- **Unique note IDs** — AppleScript identifies notes by title, not by a stable ID. In full mode, internal UUIDs are available for disambiguation. The note key system provides human-friendly identification
 - **Add or modify attachments** — attachments can be read and deleted, but there is no AppleScript command to add files or images to a note
 - **Manage tags** — hashtag-style tags (#tag) appear as plain text in the note body. There is no dedicated AppleScript API for creating, querying, or filtering by tags
 - **Access password-protected notes** — locked notes cannot be read or modified via AppleScript. Only already-unlocked notes are accessible

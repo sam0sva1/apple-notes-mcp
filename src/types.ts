@@ -3,3 +3,12 @@ export interface AppleScriptResult {
   output: string;
   error?: string;
 }
+
+export interface NoteInfo {
+  uuid: string;
+  title: string;
+  snippet: string;
+  folder: string;
+  createdAt: string;
+  modifiedAt: string;
+}

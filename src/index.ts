@@ -2,20 +2,25 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { AppleNotesManager } from './services/appleNotesManager.js';
+import { NotesDatabase } from './services/notesDatabase.js';
 import { generateNoteKey } from './utils/noteKey.js';
+import type { NoteInfo } from './types.js';
 
 const server = new McpServer(
   {
     name: 'apple-notes',
-    version: '0.2.0',
+    version: '0.3.0',
     description: 'MCP server for interacting with Apple Notes',
   },
   {
     instructions:
       'This server provides full CRUD access to Apple Notes. ' +
+      'It operates in two modes: full mode (with SQLite direct access for fast reads, metadata, and content search) ' +
+      'and basic mode (AppleScript only, when Full Disk Access is not granted). ' +
       'Use list-folders to see available folders. ' +
-      'Use list-notes to browse notes (optionally filter by folder). ' +
-      'Use search-notes to find notes by title, then get-note-content to read their full content. ' +
+      'Use list-notes to browse notes (optionally filter by folder or date in full mode). ' +
+      'Use search-notes to find notes by title (and content preview in full mode). ' +
+      'Use get-note-content to read full content. ' +
       'Use create-note to create new notes (a unique lookup key is appended to the title automatically). ' +
       'Use update-note to modify content, move-note to reorganize, and delete-note to remove notes. ' +
       'Use generate-key to create a key for an existing note (user adds it to the title manually). ' +
@@ -26,6 +31,30 @@ const server = new McpServer(
 );
 
 const notesManager = new AppleNotesManager();
+const notesDb = new NotesDatabase();
+
+if (notesDb.available) {
+  console.error('SQLite access available — full mode enabled');
+} else {
+  console.error('SQLite access unavailable — basic mode (AppleScript only)');
+}
+
+// --- Helpers ---
+
+function formatNoteInfo(note: NoteInfo): string {
+  const title = note.title || '(untitled)';
+  const meta = [note.folder, note.modifiedAt ? `modified ${note.modifiedAt}` : '']
+    .filter(Boolean)
+    .join(', ');
+  const header = meta ? `- ${title} (${meta})` : `- ${title}`;
+  const preview = note.snippet ? `\n  Preview: ${note.snippet.substring(0, 100)}` : '';
+  return header + preview;
+}
+
+function formatNoteInfoList(notes: NoteInfo[], context: string): string {
+  if (!notes.length) return `No notes found${context}.`;
+  return `Found ${notes.length} notes${context}:\n${notes.map(formatNoteInfo).join('\n')}`;
+}
 
 // --- Read tools ---
 
@@ -36,7 +65,7 @@ server.tool(
   { readOnlyHint: true },
   async () => {
     try {
-      const folders = notesManager.listFolders();
+      const folders = notesDb.available ? notesDb.listFolders() : notesManager.listFolders();
       const message = folders.length
         ? `Folders:\n${folders.map((f) => `- ${f}`).join('\n')}`
         : 'No folders found.';
@@ -57,15 +86,41 @@ server.tool(
 
 server.tool(
   'list-notes',
-  'List all notes, optionally filtered by folder',
+  'List all notes, optionally filtered by folder. With Full Disk Access: includes metadata (dates, preview) and supports date filters',
   {
     folder: z.string().optional().describe('Filter notes by folder name'),
+    createdAfter: z
+      .string()
+      .optional()
+      .describe('Filter notes created after this date (YYYY-MM-DD, requires Full Disk Access)'),
+    modifiedAfter: z
+      .string()
+      .optional()
+      .describe('Filter notes modified after this date (YYYY-MM-DD, requires Full Disk Access)'),
   },
   { readOnlyHint: true },
-  async ({ folder }) => {
+  async ({ folder, createdAfter, modifiedAfter }) => {
     try {
-      const titles = notesManager.listNotes(folder);
       const context = folder ? ` in folder "${folder}"` : '';
+
+      if (notesDb.available) {
+        const notes = notesDb.listNotes({ folder, createdAfter, modifiedAfter });
+        return { content: [{ type: 'text', text: formatNoteInfoList(notes, context) }] };
+      }
+
+      if (createdAfter || modifiedAfter) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Date filters require Full Disk Access. Grant it in System Settings > Privacy & Security > Full Disk Access.',
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const titles = notesManager.listNotes(folder);
       const message = titles.length
         ? `Found ${titles.length} notes${context}:\n${titles.map((t) => `- ${t}`).join('\n')}`
         : `No notes found${context}.`;
@@ -86,13 +141,21 @@ server.tool(
 
 server.tool(
   'search-notes',
-  'Search for notes by title',
+  'Search for notes by title. With Full Disk Access, also searches note content previews',
   {
-    query: z.string().min(1).describe('The search query to match against note titles'),
+    query: z
+      .string()
+      .min(1)
+      .describe('The search query to match against note titles (and content in full mode)'),
   },
   { readOnlyHint: true },
   async ({ query }) => {
     try {
+      if (notesDb.available) {
+        const notes = notesDb.searchNotes(query);
+        return { content: [{ type: 'text', text: formatNoteInfoList(notes, '') }] };
+      }
+
       const titles = notesManager.searchNotes(query);
       const message = titles.length
         ? `Found ${titles.length} notes:\n${titles.map((t) => `- ${t}`).join('\n')}`
