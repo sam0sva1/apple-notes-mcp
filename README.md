@@ -77,11 +77,20 @@ Create a new folder in Apple Notes.
 
 ## Limitations
 
-- **Title-based identification**: Notes are identified by title, not by a unique ID. Duplicate titles are ambiguous — use the `folder` parameter to disambiguate
-- **Titles are read-only**: Apple Notes does not allow renaming notes via AppleScript
-- **No body search**: Search only matches against note titles, not content
-- **No tag management**: Tags are not accessible via AppleScript
-- **No attachments**: Cannot add or modify attachments
+Apple Notes exposes a minimal AppleScript API compared to apps like Mail or Calendar. The following limitations are inherent to Apple's automation interface — not design choices of this server.
+
+### What this server cannot do
+
+These features are frequently requested in the community ([Siddhant-K-code/mcp-apple-notes](https://github.com/Siddhant-K-code/mcp-apple-notes/pulls), [RafalWilinski/mcp-apple-notes](https://github.com/RafalWilinski/mcp-apple-notes/issues)) but are not possible through the AppleScript Notes API:
+
+- **Full-text search by note content** — AppleScript's `where` clause only filters by `name` (title). Searching note bodies would require fetching every note and filtering client-side, which doesn't scale. Some projects work around this with vector databases and embeddings, but that adds significant complexity and dependencies
+- **Rename notes** — the `name` property is read-only in the AppleScript dictionary. The only workaround is to create a new note and delete the old one, which loses metadata
+- **Unique note IDs** — notes are identified by title, not by a stable ID. AppleScript provides no direct `get note by id` accessor. Duplicate titles cause ambiguity — use the `folder` parameter to disambiguate
+- **Add or modify attachments** — attachments can be read and deleted, but there is no AppleScript command to add files or images to a note
+- **Manage tags** — hashtag-style tags (#tag) appear as plain text in the note body. There is no dedicated AppleScript API for creating, querying, or filtering by tags
+- **Access password-protected notes** — locked notes cannot be read or modified via AppleScript. Only already-unlocked notes are accessible
+- **Work with drawings and tables** — these rich content types are stored in a format that AppleScript cannot read or manipulate
+- **Rich text formatting control** — while the `body` property accepts HTML, fine-grained control over fonts, colors, and styles is not reliably preserved
 
 ## Prerequisites
 
