@@ -27,35 +27,22 @@ server.tool(
   {
     title: z.string().min(1).describe('The title of the note'),
     content: z.string().min(1).describe('The content of the note'),
-    tags: z.array(z.string()).optional().describe('Tags for the note'),
     folder: z.string().optional().describe('Folder name to save the note to'),
   },
   { destructiveHint: true },
   async ({ title, content, folder }) => {
     try {
-      const success = notesManager.createNote(title, content, folder);
-      if (!success) {
-        const hint = folder ? ` Folder "${folder}" may not exist.` : '';
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Failed to create note.${hint} Please check your Apple Notes configuration.`,
-            },
-          ],
-          isError: true,
-        };
-      }
-
+      notesManager.createNote(title, content, folder);
       return {
         content: [{ type: 'text', text: `Note created: "${title}"` }],
       };
     } catch (error) {
+      const hint = folder ? ` Folder "${folder}" may not exist.` : '';
       return {
         content: [
           {
             type: 'text',
-            text: `Error creating note: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            text: `Error creating note: ${error instanceof Error ? error.message : 'Unknown error'}.${hint}`,
           },
         ],
         isError: true,

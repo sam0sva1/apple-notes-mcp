@@ -32,9 +32,9 @@ export class AppleNotesManager {
 
   /**
    * Creates a new note in Apple Notes.
-   * Returns true on success, false on failure.
+   * Throws on failure with a descriptive error message.
    */
-  createNote(title: string, content: string, folder?: string): boolean {
+  createNote(title: string, content: string, folder?: string): void {
     const escapedTitle = escapeAppleScriptString(title);
     const htmlContent = markdownToHtml(content);
     const escapedContent = escapeAppleScriptString(htmlContent);
@@ -65,11 +65,8 @@ export class AppleNotesManager {
 
     const result = runAppleScript(script);
     if (!result.success) {
-      console.error('Failed to create note:', result.error);
-      return false;
+      throw new Error(result.error || 'Failed to create note');
     }
-
-    return true;
   }
 
   /**
@@ -90,8 +87,7 @@ export class AppleNotesManager {
 
     const result = runAppleScript(script);
     if (!result.success) {
-      console.error('Failed to search notes:', result.error);
-      return [];
+      throw new Error(result.error || 'Failed to search notes');
     }
 
     if (!result.output) {
@@ -122,8 +118,7 @@ export class AppleNotesManager {
 
     const result = runAppleScript(script);
     if (!result.success) {
-      console.error('Failed to get note content:', result.error);
-      return '';
+      throw new Error(result.error || 'Failed to get note content');
     }
 
     return result.output;

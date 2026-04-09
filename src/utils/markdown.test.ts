@@ -72,6 +72,26 @@ describe('markdownToHtml', () => {
       const result = markdownToHtml(md);
       expect(result).toContain('&lt;div&gt;');
     });
+
+    it('preserves asterisks inside code blocks (no italic corruption)', () => {
+      const md = '```\nlet x = a * b * c;\n```';
+      const result = markdownToHtml(md);
+      expect(result).toContain('let x = a * b * c;');
+      expect(result).not.toContain('<i>');
+    });
+
+    it('preserves asterisks inside inline code', () => {
+      const result = markdownToHtml('use `a * b` here');
+      expect(result).toContain('<code>a * b</code>');
+      expect(result).not.toContain('<i>');
+    });
+
+    it('handles code blocks with non-word language names (c++, c#)', () => {
+      const md = '```c++\nint main() {}\n```';
+      const result = markdownToHtml(md);
+      expect(result).toContain('<pre><code>');
+      expect(result).toContain('int main() {}');
+    });
   });
 
   describe('lists', () => {
@@ -118,6 +138,17 @@ describe('markdownToHtml', () => {
 
     it('converts ***', () => {
       expect(markdownToHtml('***')).toContain('<hr>');
+    });
+  });
+
+  describe('edge cases', () => {
+    it('handles empty string', () => {
+      expect(markdownToHtml('')).toBe('');
+    });
+
+    it('handles whitespace-only input', () => {
+      const result = markdownToHtml('   \n\n   ');
+      expect(result).toBe('');
     });
   });
 

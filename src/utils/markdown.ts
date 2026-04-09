@@ -3,7 +3,7 @@
  * Regex-based, no external dependencies.
  *
  * Supported elements:
- * - Headings (h1–h6)
+ * - Headings (h1-h6)
  * - Bold, italic, bold+italic, strikethrough
  * - Inline code and fenced code blocks
  * - Links
@@ -15,14 +15,22 @@
 export function markdownToHtml(markdown: string): string {
   let html = markdown;
 
-  // Fenced code blocks (``` ... ```) — must be processed before inline elements
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, _lang, code) => {
-    return `<pre><code>${escapeHtml(code.trimEnd())}</code></pre>`;
+  // Extract code blocks and inline code FIRST, replace with placeholders
+  // so inline formatting regexes don't corrupt their content.
+  const codeBlocks: string[] = [];
+
+  // Fenced code blocks (``` ... ```) — [^\n]* allows c++, c#, objective-c etc.
+  html = html.replace(/```([^\n]*)\n([\s\S]*?)```/g, (_match, _lang, code) => {
+    const placeholder = `\x00CODEBLOCK${codeBlocks.length}\x00`;
+    codeBlocks.push(`<pre><code>${escapeHtml(code.trimEnd())}</code></pre>`);
+    return placeholder;
   });
 
-  // Inline code (`...`) — before other inline formatting
+  // Inline code (`...`)
   html = html.replace(/`([^`]+)`/g, (_match, code) => {
-    return `<code>${escapeHtml(code)}</code>`;
+    const placeholder = `\x00CODEBLOCK${codeBlocks.length}\x00`;
+    codeBlocks.push(`<code>${escapeHtml(code)}</code>`);
+    return placeholder;
   });
 
   // Headings (# to ######)
@@ -78,6 +86,11 @@ export function markdownToHtml(markdown: string): string {
   html = html.replace(/(<p>[\s\S]*?<\/p>)/g, (match) => {
     return match.replace(/\n/g, '<br>');
   });
+
+  // Restore code blocks from placeholders
+  for (let i = 0; i < codeBlocks.length; i++) {
+    html = html.replace(`\x00CODEBLOCK${i}\x00`, codeBlocks[i]);
+  }
 
   return html;
 }
