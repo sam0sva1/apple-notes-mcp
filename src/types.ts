@@ -9,6 +9,7 @@ export interface NoteInfo {
   title: string;
   snippet: string;
   folder: string;
+  account: string;
   createdAt: string;
   modifiedAt: string;
 }

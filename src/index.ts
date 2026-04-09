@@ -3,28 +3,30 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { AppleNotesManager } from './services/appleNotesManager.js';
 import { NotesDatabase } from './services/notesDatabase.js';
+import { NotesIndex } from './services/notesIndex.js';
 import { generateNoteKey } from './utils/noteKey.js';
 import type { NoteInfo } from './types.js';
 
 const server = new McpServer(
   {
     name: 'apple-notes',
-    version: '0.3.0',
+    version: '0.4.0',
     description: 'MCP server for interacting with Apple Notes',
   },
   {
     instructions:
-      'This server provides full CRUD access to Apple Notes. ' +
-      'It operates in two modes: full mode (with SQLite direct access for fast reads, metadata, and content search) ' +
-      'and basic mode (AppleScript only, when Full Disk Access is not granted). ' +
+      'This server provides full CRUD access to Apple Notes in three modes:\n' +
+      '- Basic mode (no setup): read/write via AppleScript, title-only search\n' +
+      '- Full mode (with Full Disk Access): adds metadata, content preview search, date filters\n' +
+      '- Indexed mode (Full Disk Access + index-notes): full-text search across entire note content\n\n' +
       'Use list-folders to see available folders. ' +
       'Use list-notes to browse notes (optionally filter by folder or date in full mode). ' +
-      'Use search-notes to find notes by title (and content preview in full mode). ' +
+      'Use search-notes to find notes (full-text in indexed mode, preview in full mode, title-only in basic). ' +
       'Use get-note-content to read full content. ' +
-      'Use create-note to create new notes (a unique lookup key is appended to the title automatically). ' +
+      'Use create-note to create new notes (a unique lookup key is appended automatically). ' +
       'Use update-note to modify content, move-note to reorganize, and delete-note to remove notes. ' +
-      'Use generate-key to create a key for an existing note (user adds it to the title manually). ' +
-      'To find a note by key, use search-notes with the key as query. ' +
+      'Use index-notes to build or update the full-text search index. ' +
+      'Use index-status to check index info, index-delete to remove it. ' +
       'Note titles cannot be renamed (Apple Notes limitation). ' +
       'When multiple notes share the same title, specify a folder to disambiguate.',
   },
@@ -32,18 +34,25 @@ const server = new McpServer(
 
 const notesManager = new AppleNotesManager();
 const notesDb = new NotesDatabase();
+const notesIndex = new NotesIndex(notesDb);
 
 if (notesDb.available) {
-  console.error('SQLite access available — full mode enabled');
+  console.error(
+    `Full Disk Access available. FTS index: ${notesIndex.available ? 'ready' : 'not built (run index-notes)'}`,
+  );
 } else {
-  console.error('SQLite access unavailable — basic mode (AppleScript only)');
+  console.error('Basic mode — no Full Disk Access');
 }
 
 // --- Helpers ---
 
 function formatNoteInfo(note: NoteInfo): string {
   const title = note.title || '(untitled)';
-  const meta = [note.folder, note.modifiedAt ? `modified ${note.modifiedAt}` : '']
+  const meta = [
+    note.folder,
+    note.account && note.account !== note.folder ? note.account : '',
+    note.modifiedAt ? `modified ${note.modifiedAt}` : '',
+  ]
     .filter(Boolean)
     .join(', ');
   const header = meta ? `- ${title} (${meta})` : `- ${title}`;
@@ -86,7 +95,7 @@ server.tool(
 
 server.tool(
   'list-notes',
-  'List all notes, optionally filtered by folder. With Full Disk Access: includes metadata (dates, preview) and supports date filters',
+  'List all notes, optionally filtered by folder. With Full Disk Access: includes metadata and supports date filters',
   {
     folder: z.string().optional().describe('Filter notes by folder name'),
     createdAfter: z
@@ -141,21 +150,26 @@ server.tool(
 
 server.tool(
   'search-notes',
-  'Search for notes by title. With Full Disk Access, also searches note content previews',
+  'Search notes. With FTS index: searches full content. With Full Disk Access: searches titles and previews. Basic mode: titles only',
   {
-    query: z
-      .string()
-      .min(1)
-      .describe('The search query to match against note titles (and content in full mode)'),
+    query: z.string().min(1).describe('The search query to match against notes'),
   },
   { readOnlyHint: true },
   async ({ query }) => {
     try {
+      // Priority 1: FTS index (full content search)
+      if (notesIndex.available) {
+        const notes = notesIndex.search(query);
+        return { content: [{ type: 'text', text: formatNoteInfoList(notes, '') }] };
+      }
+
+      // Priority 2: SQLite snippet search (title + preview)
       if (notesDb.available) {
         const notes = notesDb.searchNotes(query);
         return { content: [{ type: 'text', text: formatNoteInfoList(notes, '') }] };
       }
 
+      // Priority 3: AppleScript title-only search
       const titles = notesManager.searchNotes(query);
       const message = titles.length
         ? `Found ${titles.length} notes:\n${titles.map((t) => `- ${t}`).join('\n')}`
@@ -384,6 +398,79 @@ server.tool(
         },
       ],
     };
+  },
+);
+
+// --- Index management tools ---
+
+server.tool(
+  'index-notes',
+  'Build or update the full-text search index. Requires Full Disk Access. First run indexes all notes, subsequent runs only update changed notes. Password-protected notes are skipped',
+  {},
+  { destructiveHint: true },
+  async () => {
+    try {
+      const stats = notesIndex.buildIndex();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Index updated: ${stats.updated} notes indexed, ${stats.skipped} skipped, ${stats.total} total processed.`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error building index: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  'index-status',
+  'Show full-text search index info: path, size, note count, last sync time',
+  {},
+  { readOnlyHint: true },
+  async () => {
+    const status = notesIndex.getStatus();
+    const sizeKb = Math.round(status.sizeBytes / 1024);
+    const message =
+      status.noteCount > 0
+        ? `Index path: ${status.path}\nSize: ${sizeKb} KB\nNotes indexed: ${status.noteCount}\nLast sync: ${status.lastSync || 'never'}`
+        : `Index not built. Run index-notes to create it.\nIndex path: ${status.path}`;
+    return { content: [{ type: 'text', text: message }] };
+  },
+);
+
+server.tool(
+  'index-delete',
+  'Delete the full-text search index completely',
+  {},
+  { destructiveHint: true },
+  async () => {
+    try {
+      notesIndex.deleteIndex();
+      return {
+        content: [{ type: 'text', text: 'Index deleted.' }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error deleting index: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
   },
 );
 

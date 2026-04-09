@@ -13,10 +13,12 @@ SELECT
   COALESCE(n.ZTITLE2, '') AS title,
   COALESCE(n.ZSNIPPET, '') AS snippet,
   COALESCE(f.ZTITLE2, '') AS folder,
+  COALESCE(a.ZNAME, '') AS account,
   datetime(n.ZCREATIONDATE3 + ${APPLE_EPOCH_OFFSET}, 'unixepoch') AS createdAt,
   datetime(n.ZMODIFICATIONDATE1 + ${APPLE_EPOCH_OFFSET}, 'unixepoch') AS modifiedAt
 FROM ZICCLOUDSYNCINGOBJECT n
 LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON n.ZFOLDER = f.Z_PK
+LEFT JOIN ZICCLOUDSYNCINGOBJECT a ON a.Z_ENT = 13
 WHERE n.Z_ENT = 11
   AND (n.ZMARKEDFORDELETION = 0 OR n.ZMARKEDFORDELETION IS NULL)
 `.trim();
@@ -51,16 +53,24 @@ export class NotesDatabase {
     }
   }
 
-  private query<T>(sql: string): T[] {
+  query<T>(sql: string): T[] {
     const output = execFileSync('sqlite3', ['-json', DB_PATH, sql], {
       encoding: 'utf8',
-      timeout: 10000,
+      timeout: 30000,
     });
 
     const trimmed = output.trim();
     if (!trimmed) return [];
 
     return JSON.parse(trimmed) as T[];
+  }
+
+  /**
+   * Returns the raw NoteStore.sqlite database path.
+   * Used by NotesIndex to read ZDATA blobs for protobuf extraction.
+   */
+  get dbPath(): string {
+    return DB_PATH;
   }
 
   listNotes(options?: ListNotesOptions): NoteInfo[] {
@@ -105,5 +115,58 @@ export class NotesDatabase {
     `;
 
     return this.query<{ name: string }>(sql).map((r) => r.name);
+  }
+
+  /**
+   * Returns all note UUIDs from the NoteStore (for sync diffing).
+   */
+  getAllNoteUuids(): string[] {
+    const sql = `
+      SELECT ZIDENTIFIER AS uuid
+      FROM ZICCLOUDSYNCINGOBJECT
+      WHERE Z_ENT = 11
+        AND (ZMARKEDFORDELETION = 0 OR ZMARKEDFORDELETION IS NULL)
+    `;
+    return this.query<{ uuid: string }>(sql).map((r) => r.uuid);
+  }
+
+  /**
+   * Returns notes with their raw ZDATA hex for protobuf extraction.
+   * If afterDate is provided, only returns notes modified after that date.
+   */
+  getNotesForIndexing(afterDate?: string): Array<{
+    uuid: string;
+    title: string;
+    folder: string;
+    account: string;
+    createdAt: string;
+    modifiedAt: string;
+    hexdata: string;
+    isPasswordProtected: number;
+  }> {
+    const dateFilter = afterDate
+      ? `AND datetime(n.ZMODIFICATIONDATE1 + ${APPLE_EPOCH_OFFSET}, 'unixepoch') > '${escapeSqlString(afterDate)}'`
+      : '';
+
+    const sql = `
+      SELECT
+        n.ZIDENTIFIER AS uuid,
+        COALESCE(n.ZTITLE2, '') AS title,
+        COALESCE(f.ZTITLE2, '') AS folder,
+        COALESCE(a.ZNAME, '') AS account,
+        datetime(n.ZCREATIONDATE3 + ${APPLE_EPOCH_OFFSET}, 'unixepoch') AS createdAt,
+        datetime(n.ZMODIFICATIONDATE1 + ${APPLE_EPOCH_OFFSET}, 'unixepoch') AS modifiedAt,
+        hex(d.ZDATA) AS hexdata,
+        COALESCE(n.ZISPASSWORDPROTECTED, 0) AS isPasswordProtected
+      FROM ZICCLOUDSYNCINGOBJECT n
+      LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON n.ZFOLDER = f.Z_PK
+      LEFT JOIN ZICCLOUDSYNCINGOBJECT a ON a.Z_ENT = 13
+      LEFT JOIN ZICNOTEDATA d ON d.ZNOTE = n.Z_PK
+      WHERE n.Z_ENT = 11
+        AND (n.ZMARKEDFORDELETION = 0 OR n.ZMARKEDFORDELETION IS NULL)
+        ${dateFilter}
+    `;
+
+    return this.query(sql);
   }
 }

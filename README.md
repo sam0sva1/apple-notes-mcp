@@ -76,6 +76,17 @@ Create a new folder in Apple Notes.
 |-----------|------|----------|-------------|
 | `name` | string | yes | The name for the new folder |
 
+### Index management
+
+#### index-notes
+Build or update the full-text search index. First run indexes all notes, subsequent runs only update changed notes. Password-protected notes are skipped. Requires Full Disk Access.
+
+#### index-status
+Show index info: path, size, note count, last sync time.
+
+#### index-delete
+Delete the full-text search index completely.
+
 ### Utility
 
 #### generate-key
@@ -89,17 +100,17 @@ For existing notes, use `generate-key` to get a key, then manually add it to the
 
 Keys are designed for easy voice input: only lowercase letters and digits, no special characters, no case sensitivity.
 
-## Full mode vs Basic mode
+## Operating modes
 
-The server operates in two modes depending on whether it can access the Apple Notes SQLite database directly.
+The server operates in three modes depending on access level:
 
-| Feature | Full mode (with FDA) | Basic mode |
-|---------|---------------------|------------|
-| List notes | With metadata (dates, folder, preview) | Titles only |
-| Search notes | Title + content preview | Title only |
-| Date filters | Yes (createdAfter, modifiedAfter) | No |
-| Create / update / delete / move | Yes | Yes |
-| Folder operations | Yes | Yes |
+| Feature | Basic | Full (FDA) | Indexed (FDA + index) |
+|---------|-------|------------|----------------------|
+| List notes | Titles only | With metadata | With metadata |
+| Search notes | Title only | Title + preview (255 chars) | Full-text content |
+| Date filters | No | Yes | Yes |
+| Create / update / delete / move | Yes | Yes | Yes |
+| Folder operations | Yes | Yes | Yes |
 
 ### Enabling full mode
 
@@ -113,6 +124,17 @@ Full Disk Access allows the server to read (never write) the Apple Notes SQLite 
 
 **Important:** Granting Full Disk Access to your terminal does not change how Claude Code operates — Claude Code still asks for permission before every action (file edits, shell commands, etc.) unless you have explicitly disabled that.
 
+### Enabling indexed mode
+
+After enabling full mode, run `index-notes` to build the full-text search index:
+
+1. Make sure Notes.app has finished syncing (open it and wait a moment if you recently edited notes on another device)
+2. Use the `index-notes` tool — first run indexes all notes, subsequent runs only update changed notes
+3. Use `index-status` to check index size and last sync time
+4. Use `index-delete` to remove the index if no longer needed
+
+The index is stored at `~/.apple-notes-mcp/index.sqlite`. Password-protected notes are skipped during indexing.
+
 ## Limitations
 
 Apple Notes exposes a minimal AppleScript API compared to apps like Mail or Calendar. The following limitations are inherent to Apple's automation interface — not design choices of this server.
@@ -121,7 +143,7 @@ Apple Notes exposes a minimal AppleScript API compared to apps like Mail or Cale
 
 These features are frequently requested in the community ([Siddhant-K-code/mcp-apple-notes](https://github.com/Siddhant-K-code/mcp-apple-notes/pulls), [RafalWilinski/mcp-apple-notes](https://github.com/RafalWilinski/mcp-apple-notes/issues)) but are not possible through the AppleScript Notes API:
 
-- **Full-text search by note content** — in basic mode, search only matches titles. In full mode (with FDA), search also matches the first ~255 characters of note content. True full-text search of the entire body is not supported
+- **Full-text search by note content** — in basic mode, search only matches titles. In full mode, also matches first ~255 characters. In indexed mode, full-text search across entire content is available via the FTS index
 - **Rename notes** — the `name` property is read-only in the AppleScript dictionary. The only workaround is to create a new note and delete the old one, which loses metadata
 - **Unique note IDs** — AppleScript identifies notes by title, not by a stable ID. In full mode, internal UUIDs are available for disambiguation. The note key system provides human-friendly identification
 - **Add or modify attachments** — attachments can be read and deleted, but there is no AppleScript command to add files or images to a note
