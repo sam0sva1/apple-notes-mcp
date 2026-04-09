@@ -21,8 +21,11 @@ export function escapeAppleScriptString(str: string): string {
  */
 export function runAppleScript(script: string): AppleScriptResult {
   try {
-    const lines = script.split('\n').map(l => l.trim()).filter(Boolean);
-    const args = lines.flatMap(line => ['-e', line]);
+    const lines = script
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const args = lines.flatMap((line) => ['-e', line]);
 
     const output = execFileSync('osascript', args, {
       encoding: 'utf8',
@@ -39,9 +42,10 @@ export function runAppleScript(script: string): AppleScriptResult {
     return {
       success: false,
       output: '',
-      error: error instanceof Error
-        ? error.message
-        : 'Unknown error occurred while executing AppleScript',
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Unknown error occurred while executing AppleScript',
     };
   }
 }

@@ -53,7 +53,7 @@ describe('markdownToHtml', () => {
   describe('links', () => {
     it('converts markdown links', () => {
       expect(markdownToHtml('[Google](https://google.com)')).toContain(
-        '<a href="https://google.com">Google</a>'
+        '<a href="https://google.com">Google</a>',
       );
     });
   });

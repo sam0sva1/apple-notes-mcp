@@ -62,7 +62,7 @@ export function markdownToHtml(markdown: string): string {
   // Single newlines become <br>
   html = html
     .split('\n\n')
-    .map(block => {
+    .map((block) => {
       const trimmed = block.trim();
       if (!trimmed) return '';
       // Don't wrap block-level elements in <p>
@@ -83,10 +83,7 @@ export function markdownToHtml(markdown: string): string {
 }
 
 function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**
@@ -94,30 +91,24 @@ function escapeHtml(str: string): string {
  */
 function processLists(html: string): string {
   // Unordered lists (- item, * item, + item)
-  html = html.replace(
-    /(?:^[ \t]*[-*+]\s+.+(?:\n|$))+/gm,
-    (block) => {
-      const items = block
-        .split('\n')
-        .filter(line => line.trim())
-        .map(line => `<li>${line.replace(/^[ \t]*[-*+]\s+/, '')}</li>`)
-        .join('\n');
-      return `<ul>\n${items}\n</ul>`;
-    }
-  );
+  html = html.replace(/(?:^[ \t]*[-*+]\s+.+(?:\n|$))+/gm, (block) => {
+    const items = block
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => `<li>${line.replace(/^[ \t]*[-*+]\s+/, '')}</li>`)
+      .join('\n');
+    return `<ul>\n${items}\n</ul>`;
+  });
 
   // Ordered lists (1. item, 2. item)
-  html = html.replace(
-    /(?:^[ \t]*\d+\.\s+.+(?:\n|$))+/gm,
-    (block) => {
-      const items = block
-        .split('\n')
-        .filter(line => line.trim())
-        .map(line => `<li>${line.replace(/^[ \t]*\d+\.\s+/, '')}</li>`)
-        .join('\n');
-      return `<ol>\n${items}\n</ol>`;
-    }
-  );
+  html = html.replace(/(?:^[ \t]*\d+\.\s+.+(?:\n|$))+/gm, (block) => {
+    const items = block
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => `<li>${line.replace(/^[ \t]*\d+\.\s+/, '')}</li>`)
+      .join('\n');
+    return `<ol>\n${items}\n</ol>`;
+  });
 
   return html;
 }
@@ -126,15 +117,12 @@ function processLists(html: string): string {
  * Converts markdown blockquotes (> text) to HTML <blockquote>.
  */
 function processBlockquotes(html: string): string {
-  return html.replace(
-    /(?:^>\s?.+(?:\n|$))+/gm,
-    (block) => {
-      const content = block
-        .split('\n')
-        .filter(line => line.trim())
-        .map(line => line.replace(/^>\s?/, ''))
-        .join('<br>');
-      return `<blockquote>${content}</blockquote>`;
-    }
-  );
+  return html.replace(/(?:^>\s?.+(?:\n|$))+/gm, (block) => {
+    const content = block
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => line.replace(/^>\s?/, ''))
+      .join('<br>');
+    return `<blockquote>${content}</blockquote>`;
+  });
 }

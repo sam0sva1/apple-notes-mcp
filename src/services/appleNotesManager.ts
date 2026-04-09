@@ -17,12 +17,10 @@ export class AppleNotesManager {
       return this.accountName;
     }
 
-    const result = runAppleScript(
-      'tell application "Notes" to get name of every account'
-    );
+    const result = runAppleScript('tell application "Notes" to get name of every account');
 
     if (result.success && result.output) {
-      const accounts = result.output.split(', ').map(a => a.trim());
+      const accounts = result.output.split(', ').map((a) => a.trim());
       this.accountName = accounts.includes('iCloud') ? 'iCloud' : accounts[0];
     } else {
       console.error('Failed to detect Notes account, falling back to "iCloud":', result.error);
@@ -36,7 +34,7 @@ export class AppleNotesManager {
    * Creates a new note in Apple Notes.
    * Returns true on success, false on failure.
    */
-  createNote(title: string, content: string, tags: string[] = [], folder?: string): boolean {
+  createNote(title: string, content: string, folder?: string): boolean {
     const escapedTitle = escapeAppleScriptString(title);
     const htmlContent = markdownToHtml(content);
     const escapedContent = escapeAppleScriptString(htmlContent);
@@ -100,7 +98,10 @@ export class AppleNotesManager {
       return [];
     }
 
-    return result.output.split(', ').map(title => title.trim()).filter(Boolean);
+    return result.output
+      .split(', ')
+      .map((title) => title.trim())
+      .filter(Boolean);
   }
 
   /**

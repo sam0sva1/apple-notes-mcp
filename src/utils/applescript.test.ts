@@ -70,7 +70,7 @@ describe('runAppleScript', () => {
     expect(mockExecFileSync).toHaveBeenCalledWith(
       'osascript',
       ['-e', 'tell application "Notes"', '-e', 'get name', '-e', 'end tell'],
-      expect.objectContaining({ encoding: 'utf8', timeout: 10000 })
+      expect.objectContaining({ encoding: 'utf8', timeout: 10000 }),
     );
     expect(result.success).toBe(true);
     expect(result.output).toBe('ok');
@@ -85,7 +85,7 @@ describe('runAppleScript', () => {
     expect(mockExecFileSync).toHaveBeenCalledWith(
       'osascript',
       ['-e', 'tell app "Notes"', '-e', 'end tell'],
-      expect.anything()
+      expect.anything(),
     );
   });
 
