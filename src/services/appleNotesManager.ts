@@ -1,4 +1,5 @@
 import { runAppleScript, escapeAppleScriptString } from '../utils/applescript.js';
+import { markdownToHtml } from '../utils/markdown.js';
 
 export class AppleNotesManager {
   private accountName: string | null = null;
@@ -37,7 +38,8 @@ export class AppleNotesManager {
    */
   createNote(title: string, content: string, tags: string[] = [], folder?: string): boolean {
     const escapedTitle = escapeAppleScriptString(title);
-    const escapedContent = escapeAppleScriptString(content);
+    const htmlContent = markdownToHtml(content);
+    const escapedContent = escapeAppleScriptString(htmlContent);
     const escapedAccount = escapeAppleScriptString(this.getAccountName());
 
     let script: string;
