@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { escapeAppleScriptString } from './applescript.js';
+import { escapeAppleScriptString, parseAppleScriptList } from './applescript.js';
 
 describe('escapeAppleScriptString', () => {
   it('returns empty string unchanged', () => {
@@ -43,6 +43,39 @@ describe('escapeAppleScriptString', () => {
 
   it('handles unicode characters without escaping', () => {
     expect(escapeAppleScriptString('привет 你好 🎉')).toBe('привет 你好 🎉');
+  });
+});
+
+describe('parseAppleScriptList', () => {
+  it('returns empty array for empty string', () => {
+    expect(parseAppleScriptList('')).toEqual([]);
+  });
+
+  it('returns single item when no delimiter present', () => {
+    expect(parseAppleScriptList('My Note')).toEqual(['My Note']);
+  });
+
+  it('splits on ||| delimiter', () => {
+    expect(parseAppleScriptList('Note 1|||Note 2|||Note 3')).toEqual([
+      'Note 1',
+      'Note 2',
+      'Note 3',
+    ]);
+  });
+
+  it('trims whitespace from items', () => {
+    expect(parseAppleScriptList(' Note 1 ||| Note 2 ')).toEqual(['Note 1', 'Note 2']);
+  });
+
+  it('handles titles containing commas (the bug we fixed)', () => {
+    expect(parseAppleScriptList('Hello, world|||Another, note')).toEqual([
+      'Hello, world',
+      'Another, note',
+    ]);
+  });
+
+  it('filters out empty items', () => {
+    expect(parseAppleScriptList('|||Note|||')).toEqual(['Note']);
   });
 });
 

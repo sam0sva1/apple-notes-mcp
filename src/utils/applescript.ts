@@ -15,6 +15,23 @@ export function escapeAppleScriptString(str: string): string {
 }
 
 /**
+ * Delimiter used in AppleScript `text item delimiters` to safely split lists.
+ * Avoids the default comma separator which breaks on titles containing commas.
+ */
+export const APPLESCRIPT_LIST_DELIMITER = '|||';
+
+/**
+ * Parses a delimited list returned by AppleScript using our custom delimiter.
+ */
+export function parseAppleScriptList(output: string): string[] {
+  if (!output) return [];
+  return output
+    .split(APPLESCRIPT_LIST_DELIMITER)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
  * Executes an AppleScript and returns the result.
  * Uses execFileSync to bypass the shell entirely (no shell injection possible).
  * Each script line is passed as a separate -e argument to osascript.
