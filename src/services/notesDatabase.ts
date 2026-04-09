@@ -13,12 +13,11 @@ SELECT
   COALESCE(n.ZTITLE2, '') AS title,
   COALESCE(n.ZSNIPPET, '') AS snippet,
   COALESCE(f.ZTITLE2, '') AS folder,
-  COALESCE(a.ZNAME, '') AS account,
+  COALESCE((SELECT ZNAME FROM ZICCLOUDSYNCINGOBJECT WHERE Z_ENT = 13 LIMIT 1), '') AS account,
   datetime(n.ZCREATIONDATE3 + ${APPLE_EPOCH_OFFSET}, 'unixepoch') AS createdAt,
   datetime(n.ZMODIFICATIONDATE1 + ${APPLE_EPOCH_OFFSET}, 'unixepoch') AS modifiedAt
 FROM ZICCLOUDSYNCINGOBJECT n
 LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON n.ZFOLDER = f.Z_PK
-LEFT JOIN ZICCLOUDSYNCINGOBJECT a ON a.Z_ENT = 13
 WHERE n.Z_ENT = 11
   AND (n.ZMARKEDFORDELETION = 0 OR n.ZMARKEDFORDELETION IS NULL)
 `.trim();
@@ -53,7 +52,7 @@ export class NotesDatabase {
     }
   }
 
-  query<T>(sql: string): T[] {
+  private query<T>(sql: string): T[] {
     const output = execFileSync('sqlite3', ['-json', DB_PATH, sql], {
       encoding: 'utf8',
       timeout: 30000,
@@ -63,14 +62,6 @@ export class NotesDatabase {
     if (!trimmed) return [];
 
     return JSON.parse(trimmed) as T[];
-  }
-
-  /**
-   * Returns the raw NoteStore.sqlite database path.
-   * Used by NotesIndex to read ZDATA blobs for protobuf extraction.
-   */
-  get dbPath(): string {
-    return DB_PATH;
   }
 
   listNotes(options?: ListNotesOptions): NoteInfo[] {
@@ -153,14 +144,13 @@ export class NotesDatabase {
         n.ZIDENTIFIER AS uuid,
         COALESCE(n.ZTITLE2, '') AS title,
         COALESCE(f.ZTITLE2, '') AS folder,
-        COALESCE(a.ZNAME, '') AS account,
+        COALESCE((SELECT ZNAME FROM ZICCLOUDSYNCINGOBJECT WHERE Z_ENT = 13 LIMIT 1), '') AS account,
         datetime(n.ZCREATIONDATE3 + ${APPLE_EPOCH_OFFSET}, 'unixepoch') AS createdAt,
         datetime(n.ZMODIFICATIONDATE1 + ${APPLE_EPOCH_OFFSET}, 'unixepoch') AS modifiedAt,
         hex(d.ZDATA) AS hexdata,
         COALESCE(n.ZISPASSWORDPROTECTED, 0) AS isPasswordProtected
       FROM ZICCLOUDSYNCINGOBJECT n
       LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON n.ZFOLDER = f.Z_PK
-      LEFT JOIN ZICCLOUDSYNCINGOBJECT a ON a.Z_ENT = 13
       LEFT JOIN ZICNOTEDATA d ON d.ZNOTE = n.Z_PK
       WHERE n.Z_ENT = 11
         AND (n.ZMARKEDFORDELETION = 0 OR n.ZMARKEDFORDELETION IS NULL)
