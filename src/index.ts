@@ -18,20 +18,24 @@ const server = new McpServer(
   },
   {
     instructions:
-      'This server provides full CRUD access to Apple Notes in three modes:\n' +
-      '- Basic mode (no setup): read/write via AppleScript, title-only search\n' +
-      '- Full mode (with Full Disk Access): adds metadata, content preview search, date filters\n' +
-      '- Indexed mode (Full Disk Access + index-notes): full-text search across entire note content\n\n' +
-      'Use list-folders to see available folders. ' +
-      'Use list-notes to browse notes (optionally filter by folder or date in full mode). ' +
-      'Use search-notes to find notes (full-text in indexed mode, preview in full mode, title-only in basic). ' +
-      'Use get-note-content to read full content. ' +
-      'Use create-note to create new notes (a unique lookup key is appended automatically). ' +
-      'Use update-note to modify content, move-note to reorganize, and delete-note to remove notes. ' +
-      'Use index-notes to build or update the full-text search index. ' +
-      'Use index-status to check index info, index-delete to remove it. ' +
-      'Note titles cannot be renamed (Apple Notes limitation). ' +
-      'When multiple notes share the same title, specify a folder to disambiguate.',
+      'Apple Notes MCP server with full CRUD access.\n\n' +
+      'IMPORTANT: Titles returned by search-notes and list-notes are exact strings including any emoji. ' +
+      'Always copy the title exactly as shown (inside quotes) when passing to other tools.\n\n' +
+      'Workflow:\n' +
+      '1. list-accounts — see available accounts (iCloud, etc.)\n' +
+      '2. list-folders — see folders in an account\n' +
+      '3. list-notes — browse notes (paginated, default 50). Use offset for next page\n' +
+      '4. search-notes — find notes by title or content\n' +
+      '5. get-note-content — read full note body (returns HTML)\n' +
+      '6. create-note — create note (lookup key appended automatically for easy retrieval)\n' +
+      '7. update-note — replace note body. rename-note — change title (preserves key)\n' +
+      '8. delete-note, move-note, create-folder — manage notes\n\n' +
+      'Full-text search: run index-notes once to build the FTS index. ' +
+      'After that, search-notes also searches note content, not just titles. ' +
+      'Run index-notes again after making changes to update the index.\n\n' +
+      'Note keys: each created note gets a 5-char key (e.g. k7x2m) in the title. ' +
+      'Search by key for instant lookup. generate-key creates keys for existing notes.\n\n' +
+      'If something is unclear, call get-help for full documentation.',
   },
 );
 
