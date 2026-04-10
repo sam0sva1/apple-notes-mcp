@@ -184,6 +184,8 @@ Apple Notes uses an internal database (NoteStore.sqlite) that updates asynchrono
 
 The same applies in reverse: if you delete a note in the app, the FTS index may still show it until you run `index-notes`. Attempting to read a deleted note via `get-note-content` will return an error, which is expected.
 
+Additionally, notes created or renamed via AppleScript may have a null title in the SQLite database (the `ZTITLE2` field). Apple Notes stores the display title in the first line of the note's HTML body and caches it in `ZTITLE2` — but this cache is not always updated for notes modified through automation. This is why `search-notes` always uses AppleScript for title matching: it reads the live display title, not the cached database field.
+
 If you edited notes on another device, open Notes.app and wait for iCloud sync to complete before running `index-notes`.
 
 ## Limitations
