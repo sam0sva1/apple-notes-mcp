@@ -33,6 +33,8 @@ export interface ListNotesOptions {
   folder?: string;
   createdAfter?: string;
   modifiedAfter?: string;
+  limit?: number;
+  offset?: number;
 }
 
 /**
@@ -83,7 +85,13 @@ export class NotesDatabase {
     }
 
     const where = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
-    const sql = `${BASE_NOTE_QUERY}${where} ORDER BY n.ZMODIFICATIONDATE1 DESC`;
+    const pagination = [
+      options?.limit !== undefined ? `LIMIT ${options.limit}` : '',
+      options?.offset !== undefined ? `OFFSET ${options.offset}` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const sql = `${BASE_NOTE_QUERY}${where} ORDER BY n.ZMODIFICATIONDATE1 DESC ${pagination}`;
 
     return this.query<NoteInfo>(sql);
   }

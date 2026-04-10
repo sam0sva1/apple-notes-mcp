@@ -13,7 +13,7 @@ import type { NoteInfo } from './types.js';
 const server = new McpServer(
   {
     name: 'apple-notes',
-    version: '0.4.0',
+    version: '0.5.0',
     description: 'MCP server for interacting with Apple Notes',
   },
   {
@@ -51,14 +51,12 @@ if (notesDb.available) {
 
 function formatNoteInfo(note: NoteInfo): string {
   const title = note.title || '(untitled)';
-  const meta = [
-    note.folder,
-    note.account && note.account !== note.folder ? note.account : '',
-    note.modifiedAt ? `modified ${note.modifiedAt}` : '',
-  ]
-    .filter(Boolean)
-    .join(', ');
-  const header = meta ? `- ${title} (${meta})` : `- ${title}`;
+  const parts = [`title: "${title}"`];
+  if (note.folder) parts.push(`folder: ${note.folder}`);
+  if (note.account) parts.push(`account: ${note.account}`);
+  if (note.uuid) parts.push(`uuid: ${note.uuid}`);
+  if (note.modifiedAt) parts.push(`modified: ${note.modifiedAt}`);
+  const header = `- ${parts.join(' | ')}`;
   const preview = note.snippet ? `\n  Preview: ${note.snippet.substring(0, 100)}` : '';
   return header + preview;
 }
@@ -68,16 +66,49 @@ function formatNoteInfoList(notes: NoteInfo[], context: string): string {
   return `Found ${notes.length} notes${context}:\n${notes.map(formatNoteInfo).join('\n')}`;
 }
 
+const accountParam = z
+  .string()
+  .optional()
+  .describe('Account name (use list-accounts to see available). Defaults to iCloud');
+
 // --- Read tools ---
 
 server.tool(
-  'list-folders',
-  'List all folders in the Notes account',
+  'list-accounts',
+  'List all Notes accounts available on this Mac',
   {},
   { readOnlyHint: true },
   async () => {
     try {
-      const folders = notesDb.available ? notesDb.listFolders() : notesManager.listFolders();
+      const accounts = notesManager.listAccounts();
+      const message = accounts.length
+        ? `Accounts:\n${accounts.map((a) => `- ${a}`).join('\n')}`
+        : 'No accounts found.';
+      return { content: [{ type: 'text', text: message }] };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error listing accounts: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  'list-folders',
+  'List all folders in a Notes account',
+  {
+    account: accountParam,
+  },
+  { readOnlyHint: true },
+  async ({ account }) => {
+    try {
+      const folders = notesDb.available ? notesDb.listFolders() : notesManager.listFolders(account);
       const message = folders.length
         ? `Folders:\n${folders.map((f) => `- ${f}`).join('\n')}`
         : 'No folders found.';
@@ -101,6 +132,9 @@ server.tool(
   'List all notes, optionally filtered by folder. With Full Disk Access: includes metadata and supports date filters',
   {
     folder: z.string().optional().describe('Filter notes by folder name'),
+    account: accountParam,
+    limit: z.number().optional().describe('Max notes to return (default 50)'),
+    offset: z.number().optional().describe('Skip this many notes (for pagination)'),
     createdAfter: z
       .string()
       .optional()
@@ -111,13 +145,27 @@ server.tool(
       .describe('Filter notes modified after this date (YYYY-MM-DD, requires Full Disk Access)'),
   },
   { readOnlyHint: true },
-  async ({ folder, createdAfter, modifiedAfter }) => {
+  async ({ folder, account, limit, offset, createdAfter, modifiedAfter }) => {
     try {
+      const effectiveLimit = limit ?? 50;
+      const effectiveOffset = offset ?? 0;
       const context = folder ? ` in folder "${folder}"` : '';
+      const paginationInfo =
+        effectiveOffset > 0 || limit !== undefined
+          ? ` (showing ${effectiveOffset + 1}-${effectiveOffset + effectiveLimit})`
+          : '';
 
       if (notesDb.available) {
-        const notes = notesDb.listNotes({ folder, createdAfter, modifiedAfter });
-        return { content: [{ type: 'text', text: formatNoteInfoList(notes, context) }] };
+        const notes = notesDb.listNotes({
+          folder,
+          createdAfter,
+          modifiedAfter,
+          limit: effectiveLimit,
+          offset: effectiveOffset,
+        });
+        return {
+          content: [{ type: 'text', text: formatNoteInfoList(notes, context + paginationInfo) }],
+        };
       }
 
       if (createdAfter || modifiedAfter) {
@@ -132,9 +180,10 @@ server.tool(
         };
       }
 
-      const titles = notesManager.listNotes(folder);
+      const allTitles = notesManager.listNotes(folder, account);
+      const titles = allTitles.slice(effectiveOffset, effectiveOffset + effectiveLimit);
       const message = titles.length
-        ? `Found ${titles.length} notes${context}:\n${titles.map((t) => `- ${t}`).join('\n')}`
+        ? `Found ${allTitles.length} notes${context}${paginationInfo}:\n${titles.map((t) => `- title: "${t}"`).join('\n')}`
         : `No notes found${context}.`;
       return { content: [{ type: 'text', text: message }] };
     } catch (error) {
@@ -156,18 +205,22 @@ server.tool(
   'Search notes by title (always live from Notes.app) and optionally by content (with FTS index). Results are merged for completeness',
   {
     query: z.string().min(1).describe('The search query to match against notes'),
+    account: accountParam,
   },
   { readOnlyHint: true },
-  async ({ query }) => {
+  async ({ query, account }) => {
     try {
       // AppleScript title search — always runs, always fresh
-      const titleMatches = notesManager.searchNotes(query);
+      const titleMatches = notesManager.searchNotes(query, account);
       const titleSet = new Set(titleMatches);
 
       // FTS content search — adds body-only matches if index exists
       let contentMatches: NoteInfo[] = [];
       if (notesIndex.available) {
-        contentMatches = notesIndex.search(query).filter((n) => !titleSet.has(n.title));
+        contentMatches = notesIndex
+          .search(query)
+          .filter((n) => !titleSet.has(n.title))
+          .filter((n) => !account || n.account === account);
       }
 
       // Format: title matches first (live), then content-only matches (from index)
@@ -175,7 +228,7 @@ server.tool(
 
       if (titleMatches.length > 0) {
         parts.push(
-          `Title matches (${titleMatches.length}):\n${titleMatches.map((t) => `- ${t}`).join('\n')}`,
+          `Title matches (${titleMatches.length}):\n${titleMatches.map((t) => `- title: "${t}"`).join('\n')}`,
         );
       }
 
@@ -217,11 +270,12 @@ server.tool(
       .string()
       .optional()
       .describe('Folder to look in (helps disambiguate duplicate titles)'),
+    account: accountParam,
   },
   { readOnlyHint: true },
-  async ({ title, folder }) => {
+  async ({ title, folder, account }) => {
     try {
-      const content = notesManager.getNoteContent(title, folder);
+      const content = notesManager.getNoteContent(title, folder, account);
       return {
         content: [{ type: 'text', text: content || 'Note has no content.' }],
       };
@@ -248,14 +302,15 @@ server.tool(
     title: z.string().min(1).describe('The title of the note'),
     content: z.string().min(1).describe('The content of the note (markdown supported)'),
     folder: z.string().optional().describe('Folder to save the note to'),
+    account: accountParam,
     noKey: z.boolean().optional().describe('If true, do not append a lookup key to the title'),
   },
   { destructiveHint: true },
-  async ({ title, content, folder, noKey }) => {
+  async ({ title, content, folder, account, noKey }) => {
     try {
       const key = noKey ? null : generateNoteKey();
       const fullTitle = key ? `${title} ${key}` : title;
-      notesManager.createNote(fullTitle, content, folder);
+      notesManager.createNote(fullTitle, content, folder, account);
       const keyInfo = key ? ` (key: ${key})` : '';
       return {
         content: [{ type: 'text', text: `Note created: "${fullTitle}"${keyInfo}` }],
@@ -288,11 +343,12 @@ server.tool(
       .string()
       .optional()
       .describe('Folder to look in (helps disambiguate duplicate titles)'),
+    account: accountParam,
   },
   { destructiveHint: true },
-  async ({ title, content, folder }) => {
+  async ({ title, content, folder, account }) => {
     try {
-      notesManager.updateNote(title, content, folder);
+      notesManager.updateNote(title, content, folder, account);
       return {
         content: [{ type: 'text', text: `Note updated: "${title}"` }],
       };
@@ -319,11 +375,12 @@ server.tool(
       .string()
       .optional()
       .describe('Folder to look in (helps disambiguate duplicate titles)'),
+    account: accountParam,
   },
   { destructiveHint: true },
-  async ({ title, folder }) => {
+  async ({ title, folder, account }) => {
     try {
-      notesManager.deleteNote(title, folder);
+      notesManager.deleteNote(title, folder, account);
       return {
         content: [{ type: 'text', text: `Note deleted: "${title}"` }],
       };
@@ -351,11 +408,12 @@ server.tool(
       .string()
       .optional()
       .describe('The current folder (helps disambiguate duplicate titles)'),
+    account: accountParam,
   },
   { destructiveHint: true },
-  async ({ title, targetFolder, sourceFolder }) => {
+  async ({ title, targetFolder, sourceFolder, account }) => {
     try {
-      notesManager.moveNote(title, targetFolder, sourceFolder);
+      notesManager.moveNote(title, targetFolder, sourceFolder, account);
       return {
         content: [{ type: 'text', text: `Note "${title}" moved to folder "${targetFolder}"` }],
       };
@@ -387,13 +445,15 @@ server.tool(
       .boolean()
       .optional()
       .describe('If true, do not preserve the lookup key from the old title'),
+    account: accountParam,
   },
   { destructiveHint: true },
-  async ({ title, newTitle, folder, removeKey }) => {
+  async ({ title, newTitle, folder, removeKey, account }) => {
     try {
       const fullNewTitle = notesManager.renameNote(title, newTitle, {
         folder,
         removeKey,
+        account,
       });
       return {
         content: [
@@ -422,11 +482,12 @@ server.tool(
   'Create a new folder in Apple Notes',
   {
     name: z.string().min(1).describe('The name for the new folder'),
+    account: accountParam,
   },
   { destructiveHint: true },
-  async ({ name }) => {
+  async ({ name, account }) => {
     try {
-      notesManager.createFolder(name);
+      notesManager.createFolder(name, account);
       return {
         content: [{ type: 'text', text: `Folder created: "${name}"` }],
       };

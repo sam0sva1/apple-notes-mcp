@@ -7,18 +7,29 @@ import {
 import { markdownToHtml } from '../utils/markdown.js';
 
 export class AppleNotesManager {
-  private accountName: string | null = null;
+  private defaultAccountName: string | null = null;
 
-  /**
-   * Lazily detects the Notes account name.
-   * Prefers "iCloud" if available, otherwise uses the first account.
-   * Falls back to "iCloud" on error.
-   */
-  private getAccountName(): string {
-    if (this.accountName !== null) {
-      return this.accountName;
+  private getDefaultAccountName(): string {
+    if (this.defaultAccountName !== null) {
+      return this.defaultAccountName;
     }
 
+    const accounts = this.listAccounts();
+    if (accounts.length > 0) {
+      this.defaultAccountName = accounts.includes('iCloud') ? 'iCloud' : accounts[0];
+    } else {
+      console.error('Failed to detect Notes accounts, falling back to "iCloud"');
+      this.defaultAccountName = 'iCloud';
+    }
+
+    return this.defaultAccountName;
+  }
+
+  private resolveAccount(account?: string): string {
+    return account ?? this.getDefaultAccountName();
+  }
+
+  listAccounts(): string[] {
     const script = `
       set accountNames to name of every account of application "Notes"
       set AppleScript's text item delimiters to "${APPLESCRIPT_LIST_DELIMITER}"
@@ -26,27 +37,18 @@ export class AppleNotesManager {
     `;
 
     const result = runAppleScript(script);
-
-    if (result.success && result.output) {
-      const accounts = parseAppleScriptList(result.output);
-      this.accountName = accounts.includes('iCloud') ? 'iCloud' : accounts[0];
-    } else {
-      console.error('Failed to detect Notes account, falling back to "iCloud":', result.error);
-      this.accountName = 'iCloud';
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to list accounts');
     }
 
-    return this.accountName;
+    return parseAppleScriptList(result.output);
   }
 
-  /**
-   * Creates a new note in Apple Notes.
-   * Throws on failure with a descriptive error message.
-   */
-  createNote(title: string, content: string, folder?: string): void {
+  createNote(title: string, content: string, folder?: string, account?: string): void {
     const escapedTitle = escapeAppleScriptString(title);
     const htmlContent = markdownToHtml(content);
     const escapedContent = escapeAppleScriptString(htmlContent);
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
 
     let script: string;
 
@@ -77,13 +79,9 @@ export class AppleNotesManager {
     }
   }
 
-  /**
-   * Searches for notes by title.
-   * Returns an array of matching note titles.
-   */
-  searchNotes(query: string): string[] {
+  searchNotes(query: string, account?: string): string[] {
     const escapedQuery = escapeAppleScriptString(query);
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
 
     const script = `
       tell application "Notes"
@@ -103,13 +101,9 @@ export class AppleNotesManager {
     return parseAppleScriptList(result.output);
   }
 
-  /**
-   * Retrieves the content of a specific note.
-   * Returns the note body or empty string if not found.
-   */
-  getNoteContent(title: string, folder?: string): string {
+  getNoteContent(title: string, folder?: string, account?: string): string {
     const escapedTitle = escapeAppleScriptString(title);
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
 
     let script: string;
 
@@ -142,12 +136,8 @@ export class AppleNotesManager {
     return result.output;
   }
 
-  /**
-   * Lists all notes, optionally filtered by folder.
-   * Returns an array of note titles.
-   */
-  listNotes(folder?: string): string[] {
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+  listNotes(folder?: string, account?: string): string[] {
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
 
     let script: string;
 
@@ -184,12 +174,8 @@ export class AppleNotesManager {
     return parseAppleScriptList(result.output);
   }
 
-  /**
-   * Lists all folders in the account.
-   * Returns an array of folder names.
-   */
-  listFolders(): string[] {
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+  listFolders(account?: string): string[] {
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
 
     const script = `
       tell application "Notes"
@@ -209,14 +195,9 @@ export class AppleNotesManager {
     return parseAppleScriptList(result.output);
   }
 
-  /**
-   * Deletes a note by title.
-   * If folder is specified, deletes the note from that folder.
-   * With duplicate titles, the first match is deleted.
-   */
-  deleteNote(title: string, folder?: string): void {
+  deleteNote(title: string, folder?: string, account?: string): void {
     const escapedTitle = escapeAppleScriptString(title);
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
 
     let script: string;
 
@@ -247,16 +228,11 @@ export class AppleNotesManager {
     }
   }
 
-  /**
-   * Updates the body content of an existing note.
-   * Note titles cannot be changed (read-only in AppleScript).
-   * Content is converted from markdown to HTML.
-   */
-  updateNote(title: string, content: string, folder?: string): void {
+  updateNote(title: string, content: string, folder?: string, account?: string): void {
     const escapedTitle = escapeAppleScriptString(title);
     const htmlContent = markdownToHtml(content);
     const escapedContent = escapeAppleScriptString(htmlContent);
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
 
     let script: string;
 
@@ -287,14 +263,10 @@ export class AppleNotesManager {
     }
   }
 
-  /**
-   * Moves a note to a different folder.
-   * If sourceFolder is specified, the note is looked up in that folder.
-   */
-  moveNote(title: string, targetFolder: string, sourceFolder?: string): void {
+  moveNote(title: string, targetFolder: string, sourceFolder?: string, account?: string): void {
     const escapedTitle = escapeAppleScriptString(title);
     const escapedTarget = escapeAppleScriptString(targetFolder);
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
 
     let script: string;
 
@@ -323,36 +295,26 @@ export class AppleNotesManager {
     }
   }
 
-  /**
-   * Renames a note by replacing the first line of its HTML body.
-   * Preserves the note key from the old title by default.
-   * Apple Notes derives the display title from the first line of body.
-   */
   renameNote(
     currentTitle: string,
     newTitle: string,
-    options?: { folder?: string; removeKey?: boolean },
+    options?: { folder?: string; removeKey?: boolean; account?: string },
   ): string {
-    // Get current body
-    const body = this.getNoteContent(currentTitle, options?.folder);
+    const body = this.getNoteContent(currentTitle, options?.folder, options?.account);
 
-    // Extract key from current title (last word if it matches [a-z0-9]{5})
     const keyMatch = currentTitle.match(/\s([a-z0-9]{5})$/);
     const key = keyMatch && !options?.removeKey ? keyMatch[1] : null;
 
-    // Build new title with key
     const fullNewTitle = key ? `${newTitle} ${key}` : newTitle;
 
-    // Replace first <div>...</div> in body with new title
     const newBody = body.replace(
       /^<div>.*?<\/div>/,
       `<div>${escapeAppleScriptString(fullNewTitle).replace(/\\"/g, '"')}</div>`,
     );
 
-    // Update body via AppleScript
     const escapedCurrentTitle = escapeAppleScriptString(currentTitle);
     const escapedBody = escapeAppleScriptString(newBody);
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(options?.account));
 
     let script: string;
 
@@ -385,12 +347,9 @@ export class AppleNotesManager {
     return fullNewTitle;
   }
 
-  /**
-   * Creates a new folder in the account.
-   */
-  createFolder(name: string): void {
+  createFolder(name: string, account?: string): void {
     const escapedName = escapeAppleScriptString(name);
-    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
 
     const script = `
       tell application "Notes"

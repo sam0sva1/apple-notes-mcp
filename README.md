@@ -78,15 +78,25 @@ The index is stored at `~/.apple-notes-mcp/index.sqlite`. Password-protected not
 
 ### Read operations
 
+#### list-accounts
+List all Notes accounts available on this Mac (iCloud, On My Mac, etc.).
+
 #### list-folders
-List all folders in the Notes account.
+List all folders in a Notes account.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account` | string | no | Account name (default: iCloud) |
 
 #### list-notes
-List all notes, optionally filtered by folder.
+List all notes, optionally filtered by folder. Results are paginated (default 50 per page).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `folder` | string | no | Filter notes by folder name |
+| `account` | string | no | Account name (default: iCloud) |
+| `limit` | number | no | Max notes to return (default 50) |
+| `offset` | number | no | Skip this many notes (for pagination) |
 
 #### search-notes
 Search for notes by title (substring match).
@@ -94,6 +104,7 @@ Search for notes by title (substring match).
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | yes | Search query to match against note titles |
+| `account` | string | no | Account name (default: iCloud) |
 
 #### get-note-content
 Get the full content of a specific note.
@@ -102,6 +113,7 @@ Get the full content of a specific note.
 |-----------|------|----------|-------------|
 | `title` | string | yes | The exact title of the note |
 | `folder` | string | no | Folder to look in (helps disambiguate duplicate titles) |
+| `account` | string | no | Account name (default: iCloud) |
 
 ### Write operations
 
@@ -113,6 +125,7 @@ Create a new note. A short unique key (e.g. `k7x2m`) is automatically appended t
 | `title` | string | yes | The title of the note |
 | `content` | string | yes | The content (markdown supported) |
 | `folder` | string | no | Folder to save the note to |
+| `account` | string | no | Account name (default: iCloud) |
 | `noKey` | boolean | no | If true, do not append a lookup key to the title |
 
 #### update-note
@@ -123,6 +136,7 @@ Update the body content of an existing note. Note titles cannot be changed (Appl
 | `title` | string | yes | The exact title of the note to update |
 | `content` | string | yes | The new content (markdown supported, replaces entire body) |
 | `folder` | string | no | Folder to look in (helps disambiguate duplicate titles) |
+| `account` | string | no | Account name (default: iCloud) |
 
 #### delete-note
 Delete a note from Apple Notes.
@@ -131,6 +145,7 @@ Delete a note from Apple Notes.
 |-----------|------|----------|-------------|
 | `title` | string | yes | The exact title of the note to delete |
 | `folder` | string | no | Folder to look in (helps disambiguate duplicate titles) |
+| `account` | string | no | Account name (default: iCloud) |
 
 #### move-note
 Move a note to a different folder.
@@ -140,6 +155,7 @@ Move a note to a different folder.
 | `title` | string | yes | The exact title of the note to move |
 | `targetFolder` | string | yes | The destination folder name |
 | `sourceFolder` | string | no | The current folder (helps disambiguate duplicate titles) |
+| `account` | string | no | Account name (default: iCloud) |
 
 #### create-folder
 Create a new folder in Apple Notes.
@@ -147,6 +163,7 @@ Create a new folder in Apple Notes.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | yes | The name for the new folder |
+| `account` | string | no | Account name (default: iCloud) |
 
 ### Index management
 
