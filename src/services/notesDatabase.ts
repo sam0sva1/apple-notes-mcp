@@ -56,7 +56,7 @@ export class NotesDatabase {
     const output = execFileSync('sqlite3', ['-json', DB_PATH, sql], {
       encoding: 'utf8',
       timeout: 30000,
-      maxBuffer: 100 * 1024 * 1024, // 100MB — hex(ZDATA) for many notes can be large
+      maxBuffer: 10 * 1024 * 1024, // 10MB — sufficient for chunked queries
     });
 
     const trimmed = output.trim();
@@ -126,7 +126,7 @@ export class NotesDatabase {
    * Returns notes with their raw ZDATA hex for protobuf extraction.
    * If afterDate is provided, only returns notes modified after that date.
    */
-  getNotesForIndexing(afterDate?: string): Array<{
+  getNotesForIndexing(afterDate?: string, limit?: number, offset?: number): Array<{
     uuid: string;
     title: string;
     folder: string;
@@ -156,6 +156,8 @@ export class NotesDatabase {
       WHERE n.Z_ENT = 11
         AND (n.ZMARKEDFORDELETION = 0 OR n.ZMARKEDFORDELETION IS NULL)
         ${dateFilter}
+      ${limit !== undefined ? `LIMIT ${limit}` : ''}
+      ${offset !== undefined ? `OFFSET ${offset}` : ''}
     `;
 
     return this.query(sql);

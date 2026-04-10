@@ -94,11 +94,12 @@ export class NotesIndex {
   }
 
   /**
-   * Builds or updates the FTS index.
+   * Builds or updates the FTS index in chunks.
    * First run: indexes all notes. Subsequent runs: only changed notes.
    * Skips password-protected notes (encrypted ZDATA).
+   * lastSync is updated after each chunk, so interrupted runs resume from where they stopped.
    */
-  buildIndex(): IndexStats {
+  buildIndex(chunkSize = 100): IndexStats {
     if (!this.notesDb.available) {
       throw new Error('Full Disk Access required to build the index');
     }
@@ -106,36 +107,57 @@ export class NotesIndex {
     this.initTables();
 
     const lastSync = this.getLastSync();
-    const notes = this.notesDb.getNotesForIndexing(lastSync ?? undefined);
-
+    let total = 0;
     let updated = 0;
     let skipped = 0;
+    let offset = 0;
 
-    for (const note of notes) {
-      if (note.isPasswordProtected || !note.hexdata) {
-        skipped++;
-        continue;
-      }
+    // Process notes in chunks to avoid memory/buffer issues
+    while (true) {
+      const notes = this.notesDb.getNotesForIndexing(
+        lastSync ?? undefined,
+        chunkSize,
+        offset,
+      );
 
-      try {
-        const buffer = Buffer.from(note.hexdata, 'hex');
-        const content = extractNoteText(buffer);
+      if (notes.length === 0) break;
 
-        if (content === null) {
+      total += notes.length;
+
+      for (const note of notes) {
+        if (note.isPasswordProtected || !note.hexdata) {
           skipped++;
           continue;
         }
 
-        // DELETE then INSERT (FTS4 doesn't support INSERT OR REPLACE by uuid)
-        this.execSql(`DELETE FROM notes_fts WHERE uuid = '${escapeSql(note.uuid)}';`);
-        this.execSql(
-          `INSERT INTO notes_fts (uuid, title, content, folder, account, createdAt, modifiedAt) VALUES ('${escapeSql(note.uuid)}', '${escapeSql(note.title)}', '${escapeSql(content)}', '${escapeSql(note.folder)}', '${escapeSql(note.account)}', '${escapeSql(note.createdAt)}', '${escapeSql(note.modifiedAt)}');`,
-        );
-        updated++;
-      } catch (err) {
-        console.error(`Failed to index note ${note.uuid}:`, err);
-        skipped++;
+        try {
+          const buffer = Buffer.from(note.hexdata, 'hex');
+          const content = extractNoteText(buffer);
+
+          if (content === null) {
+            skipped++;
+            continue;
+          }
+
+          // DELETE then INSERT (FTS4 doesn't support INSERT OR REPLACE by uuid)
+          this.execSql(`DELETE FROM notes_fts WHERE uuid = '${escapeSql(note.uuid)}';`);
+          this.execSql(
+            `INSERT INTO notes_fts (uuid, title, content, folder, account, createdAt, modifiedAt) VALUES ('${escapeSql(note.uuid)}', '${escapeSql(note.title)}', '${escapeSql(content)}', '${escapeSql(note.folder)}', '${escapeSql(note.account)}', '${escapeSql(note.createdAt)}', '${escapeSql(note.modifiedAt)}');`,
+          );
+          updated++;
+        } catch (err) {
+          console.error(`Failed to index note ${note.uuid}:`, err);
+          skipped++;
+        }
       }
+
+      // Update lastSync after each chunk — interrupted runs resume from here
+      const now = new Date().toISOString();
+      this.execSql(
+        `INSERT OR REPLACE INTO meta (key, value) VALUES ('lastSync', '${now}');`,
+      );
+
+      offset += notes.length;
     }
 
     // Remove notes that no longer exist in NoteStore
@@ -149,11 +171,7 @@ export class NotesIndex {
       this.execSql(`DELETE FROM notes_fts WHERE uuid IN (${uuidList});`);
     }
 
-    // Update lastSync timestamp
-    const now = new Date().toISOString();
-    this.execSql(`INSERT OR REPLACE INTO meta (key, value) VALUES ('lastSync', '${now}');`);
-
-    return { total: notes.length, updated, skipped };
+    return { total, updated, skipped };
   }
 
   /**

@@ -69,24 +69,28 @@ describe('NotesIndex', () => {
     function createMockDb(notes: unknown[], liveUuids: string[] = []) {
       return {
         available: true,
-        getNotesForIndexing: vi.fn().mockReturnValue(notes),
+        // First call returns notes, second call returns [] (end of chunks)
+        getNotesForIndexing: vi
+          .fn()
+          .mockReturnValueOnce(notes)
+          .mockReturnValue([]),
         getAllNoteUuids: vi.fn().mockReturnValue(liveUuids),
       };
     }
 
     it('indexes notes and returns stats', async () => {
-      // existsSync: false for dir check, then whatever for others
       mockExistsSync.mockReturnValue(false);
-      // execSql calls: initTables, getLastSync (throws = no lastSync), DELETE, INSERT, SELECT uuids, UPDATE meta
+      // execSql: initTables, getLastSync, DELETE, INSERT, lastSync update, SELECT uuids
       mockExecFileSync
         .mockReturnValueOnce('') // initTables
         .mockImplementationOnce(() => {
           throw new Error('no such table');
-        }) // getLastSync (no table yet)
-        .mockReturnValueOnce('') // DELETE
-        .mockReturnValueOnce('') // INSERT
-        .mockReturnValueOnce('uuid-1') // SELECT uuid from notes_fts
-        .mockReturnValueOnce(''); // UPDATE meta lastSync
+        }) // getLastSync
+        .mockReturnValueOnce('') // DELETE note
+        .mockReturnValueOnce('') // INSERT note
+        .mockReturnValueOnce('') // UPDATE lastSync (per-chunk)
+        .mockReturnValueOnce('uuid-1') // SELECT uuids from FTS
+        .mockReturnValueOnce(''); // (unused)
 
       mockExtractNoteText.mockReturnValue('Hello world content');
 
@@ -123,8 +127,9 @@ describe('NotesIndex', () => {
         .mockImplementationOnce(() => {
           throw new Error('no table');
         }) // getLastSync
+        .mockReturnValueOnce('') // UPDATE lastSync (per-chunk)
         .mockReturnValueOnce('') // SELECT uuids from FTS
-        .mockReturnValueOnce(''); // UPDATE meta
+        .mockReturnValueOnce(''); // (unused)
 
       const { NotesIndex } = await import('./notesIndex.js');
       const mockDb = createMockDb(
@@ -158,8 +163,9 @@ describe('NotesIndex', () => {
         .mockImplementationOnce(() => {
           throw new Error('no table');
         }) // getLastSync
+        .mockReturnValueOnce('') // UPDATE lastSync (per-chunk)
         .mockReturnValueOnce('') // SELECT uuids
-        .mockReturnValueOnce(''); // UPDATE meta
+        .mockReturnValueOnce(''); // (unused)
 
       mockExtractNoteText.mockReturnValue(null);
 
@@ -195,11 +201,10 @@ describe('NotesIndex', () => {
           throw new Error('no table');
         }) // getLastSync
         .mockReturnValueOnce('uuid-old\nuuid-deleted') // SELECT uuids from FTS
-        .mockReturnValueOnce('') // DELETE uuid-deleted
-        .mockReturnValueOnce(''); // UPDATE meta
+        .mockReturnValueOnce(''); // DELETE uuid-deleted
 
       const { NotesIndex } = await import('./notesIndex.js');
-      // No notes to index, but live UUIDs don't include uuid-deleted
+      // getNotesForIndexing returns [] immediately (no notes to process)
       const mockDb = createMockDb([], ['uuid-old']);
 
       const index = new NotesIndex(mockDb as never);
@@ -226,7 +231,7 @@ describe('NotesIndex', () => {
         .mockReturnValueOnce('') // initTables
         .mockReturnValueOnce('2024-01-10T00:00:00Z') // getLastSync returns a date
         .mockReturnValueOnce('') // SELECT uuids from FTS
-        .mockReturnValueOnce(''); // UPDATE meta
+        .mockReturnValueOnce(''); // (unused)
 
       const { NotesIndex } = await import('./notesIndex.js');
       const mockDb = createMockDb([], []);
@@ -234,7 +239,11 @@ describe('NotesIndex', () => {
       const index = new NotesIndex(mockDb as never);
       index.buildIndex();
 
-      expect(mockDb.getNotesForIndexing).toHaveBeenCalledWith('2024-01-10T00:00:00Z');
+      expect(mockDb.getNotesForIndexing).toHaveBeenCalledWith(
+        '2024-01-10T00:00:00Z',
+        100,
+        0,
+      );
     });
   });
 
