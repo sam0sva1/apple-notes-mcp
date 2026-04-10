@@ -182,6 +182,8 @@ Apple Notes uses an internal database (NoteStore.sqlite) that updates asynchrono
 - **FTS content search may lag** — full-text search uses the FTS index, which reflects the SQLite database state. Run `index-notes` to update it after making changes
 - **Metadata may be delayed** — `list-notes` in full mode reads from SQLite, so new notes may briefly appear without metadata
 
+The same applies in reverse: if you delete a note in the app, the FTS index may still show it until you run `index-notes`. Attempting to read a deleted note via `get-note-content` will return an error, which is expected.
+
 If you edited notes on another device, open Notes.app and wait for iCloud sync to complete before running `index-notes`.
 
 ## Limitations
