@@ -2,6 +2,78 @@
 
 An MCP (Model Context Protocol) server that provides full CRUD access to Apple Notes. Create, read, update, delete, search, and organize notes through a secure interface.
 
+## Prerequisites
+
+- macOS with Apple Notes app configured
+- Node.js 20+
+
+## Installation
+
+```bash
+git clone https://github.com/sam0sva1/apple-notes-mcp.git
+cd apple-notes-mcp
+npm install
+npm run build
+```
+
+## Configuration
+
+### Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "apple-notes": {
+      "command": "node",
+      "args": ["/absolute/path/to/apple-notes-mcp/build/index.js"]
+    }
+  }
+}
+```
+
+### Claude Code
+
+```bash
+claude mcp add apple-notes -- node /absolute/path/to/apple-notes-mcp/build/index.js
+```
+
+## Operating modes
+
+The server operates in three modes depending on access level:
+
+| Feature | Basic | Full (FDA) | Indexed (FDA + index) |
+|---------|-------|------------|----------------------|
+| List notes | Titles only | With metadata | With metadata |
+| Search notes | Title only | Title + preview (255 chars) | Full-text content |
+| Date filters | No | Yes | Yes |
+| Create / update / delete / move | Yes | Yes | Yes |
+| Folder operations | Yes | Yes | Yes |
+
+### Enabling full mode
+
+Grant **Full Disk Access** to the application that runs the MCP server:
+
+1. Open **System Settings** > **Privacy & Security** > **Full Disk Access**
+2. Add your terminal app (Terminal.app, iTerm, Warp, etc.) or the specific application that launches the server (e.g. Claude Desktop)
+3. Restart the MCP server
+
+Full Disk Access allows the server to read (never write) the Apple Notes SQLite database at `~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite`.
+
+**Important:** Granting Full Disk Access to your terminal does not change how Claude Code operates — Claude Code still asks for permission before every action (file edits, shell commands, etc.) unless you have explicitly disabled that.
+
+### Enabling indexed mode
+
+After enabling full mode, run `index-notes` to build the full-text search index:
+
+1. Make sure Notes.app has finished syncing (open it and wait a moment if you recently edited notes on another device)
+2. Use the `index-notes` tool — first run indexes all notes, subsequent runs only update changed notes
+3. Use `index-status` to check index size and last sync time
+4. Use `index-delete` to remove the index if no longer needed
+
+The index is stored at `~/.apple-notes-mcp/index.sqlite`. Password-protected notes are skipped during indexing.
+
 ## Tools
 
 ### Read operations
@@ -100,41 +172,6 @@ For existing notes, use `generate-key` to get a key, then manually add it to the
 
 Keys are designed for easy voice input: only lowercase letters and digits, no special characters, no case sensitivity.
 
-## Operating modes
-
-The server operates in three modes depending on access level:
-
-| Feature | Basic | Full (FDA) | Indexed (FDA + index) |
-|---------|-------|------------|----------------------|
-| List notes | Titles only | With metadata | With metadata |
-| Search notes | Title only | Title + preview (255 chars) | Full-text content |
-| Date filters | No | Yes | Yes |
-| Create / update / delete / move | Yes | Yes | Yes |
-| Folder operations | Yes | Yes | Yes |
-
-### Enabling full mode
-
-Grant **Full Disk Access** to the application that runs the MCP server:
-
-1. Open **System Settings** > **Privacy & Security** > **Full Disk Access**
-2. Add your terminal app (Terminal.app, iTerm, Warp, etc.) or the specific application that launches the server (e.g. Claude Desktop)
-3. Restart the MCP server
-
-Full Disk Access allows the server to read (never write) the Apple Notes SQLite database at `~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite`.
-
-**Important:** Granting Full Disk Access to your terminal does not change how Claude Code operates — Claude Code still asks for permission before every action (file edits, shell commands, etc.) unless you have explicitly disabled that.
-
-### Enabling indexed mode
-
-After enabling full mode, run `index-notes` to build the full-text search index:
-
-1. Make sure Notes.app has finished syncing (open it and wait a moment if you recently edited notes on another device)
-2. Use the `index-notes` tool — first run indexes all notes, subsequent runs only update changed notes
-3. Use `index-status` to check index size and last sync time
-4. Use `index-delete` to remove the index if no longer needed
-
-The index is stored at `~/.apple-notes-mcp/index.sqlite`. Password-protected notes are skipped during indexing.
-
 ## Limitations
 
 Apple Notes exposes a minimal AppleScript API compared to apps like Mail or Calendar. The following limitations are inherent to Apple's automation interface — not design choices of this server.
@@ -152,48 +189,11 @@ These features are frequently requested in the community ([Siddhant-K-code/mcp-a
 - **Work with drawings and tables** — these rich content types are stored in a format that AppleScript cannot read or manipulate
 - **Rich text formatting control** — while the `body` property accepts HTML, fine-grained control over fonts, colors, and styles is not reliably preserved
 
-## Prerequisites
-
-- macOS with Apple Notes app configured
-- Node.js 20+
-
-## Installation
-
-```bash
-git clone <your-repo-url>
-cd mcp-apple-notes
-npm install
-npm run build
-```
-
-## Configuration
-
-### Claude Desktop
-
-Add to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "apple-notes": {
-      "command": "node",
-      "args": ["/absolute/path/to/mcp-apple-notes/build/index.js"]
-    }
-  }
-}
-```
-
-### Claude Code
-
-```bash
-claude mcp add apple-notes -- node /absolute/path/to/mcp-apple-notes/build/index.js
-```
-
 ## How it works
 
-The server communicates with Apple Notes via AppleScript (`osascript`). On the first tool call, it auto-detects the Notes account (preferring iCloud, falling back to the first available account).
+The server communicates with Apple Notes via AppleScript (`osascript`) for write operations and directly reads the Apple Notes SQLite database for enhanced read operations (when Full Disk Access is granted).
 
-Notes.app will launch automatically when a tool is first used, not when the server starts.
+On the first tool call, it auto-detects the Notes account (preferring iCloud, falling back to the first available account). Notes.app will launch automatically when a write tool is first used, not when the server starts.
 
 ## Security
 
