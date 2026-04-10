@@ -1,5 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import { AppleNotesManager } from './services/appleNotesManager.js';
 import { NotesDatabase } from './services/notesDatabase.js';
@@ -458,6 +461,31 @@ server.tool(
         },
       ],
     };
+  },
+);
+
+server.tool(
+  'get-help',
+  'Get full documentation for this Apple Notes MCP server — operating modes, tools, limitations, sync behavior',
+  {},
+  { readOnlyHint: true },
+  async () => {
+    try {
+      const thisDir = dirname(fileURLToPath(import.meta.url));
+      const readmePath = join(thisDir, '..', 'README.md');
+      const readme = readFileSync(readmePath, 'utf8');
+      return { content: [{ type: 'text', text: readme }] };
+    } catch {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'README not found. Check that the server is installed correctly.',
+          },
+        ],
+        isError: true,
+      };
+    }
   },
 );
 
