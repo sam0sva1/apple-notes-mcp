@@ -89,7 +89,9 @@ describe('NotesIndex', () => {
         .mockReturnValueOnce('uuid-1') // SELECT uuids from FTS
         .mockReturnValueOnce(''); // (unused)
 
-      mockExtractNoteText.mockReturnValue('Hello world content');
+      mockExtractNoteText.mockReturnValue(
+        'Hello world content that is long enough to pass the content quality filter threshold.',
+      );
 
       const { NotesIndex } = await import('./notesIndex.js');
       const mockDb = createMockDb(

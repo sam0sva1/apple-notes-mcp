@@ -13,7 +13,7 @@ import type { NoteInfo } from './types.js';
 const server = new McpServer(
   {
     name: 'apple-notes',
-    version: '0.5.0',
+    version: '0.6.0',
     description: 'MCP server for interacting with Apple Notes',
   },
   {
@@ -42,7 +42,11 @@ const server = new McpServer(
 const notesManager = new AppleNotesManager();
 const notesDb = new NotesDatabase();
 const notesIndex = new NotesIndex(notesDb);
+const readOnlyMode = process.env.READONLY_MODE === 'true';
 
+if (readOnlyMode) {
+  console.error('Read-only mode enabled — write tools disabled');
+}
 if (notesDb.available) {
   console.error(
     `Full Disk Access available. FTS index: ${notesIndex.available ? 'ready' : 'not built (run index-notes)'}`,
@@ -63,6 +67,23 @@ function formatNoteInfo(note: NoteInfo): string {
   const header = `- ${parts.join(' | ')}`;
   const preview = note.snippet ? `\n  Preview: ${note.snippet.substring(0, 100)}` : '';
   return header + preview;
+}
+
+function checkDuplicates(
+  title: string,
+  folder: string | undefined,
+  account: string | undefined,
+): string | null {
+  if (folder) return null;
+  try {
+    const count = notesManager.countNotesByTitle(title, account);
+    if (count > 1) {
+      return `Multiple notes (${count}) found with title "${title}". Use list-notes to find the right folder, then specify the folder parameter.`;
+    }
+  } catch {
+    /* AppleScript unavailable — proceed without check */
+  }
+  return null;
 }
 
 function formatNoteInfoList(notes: NoteInfo[], context: string): string {
@@ -295,6 +316,9 @@ server.tool(
   { readOnlyHint: true },
   async ({ title, folder, account }) => {
     try {
+      const dupMsg = checkDuplicates(title, folder, account);
+      if (dupMsg) return { content: [{ type: 'text', text: dupMsg }], isError: true };
+
       const content = notesManager.getNoteContent(title, folder, account);
       return {
         content: [{ type: 'text', text: content || 'Note has no content.' }],
@@ -313,217 +337,228 @@ server.tool(
   },
 );
 
-// --- Write tools ---
+// --- Write tools (disabled in READONLY_MODE) ---
 
-server.tool(
-  'create-note',
-  'Create a new note in Apple Notes. A short unique key is appended to the title for easy lookup later',
-  {
-    title: z.string().min(1).describe('The title of the note'),
-    content: z.string().min(1).describe('The content of the note (markdown supported)'),
-    folder: z.string().optional().describe('Folder to save the note to'),
-    account: accountParam,
-    noKey: z.boolean().optional().describe('If true, do not append a lookup key to the title'),
-  },
-  { destructiveHint: true },
-  async ({ title, content, folder, account, noKey }) => {
-    try {
-      const key = noKey ? null : generateNoteKey();
-      const fullTitle = key ? `${title} ${key}` : title;
-      notesManager.createNote(fullTitle, content, folder, account);
-      const keyInfo = key ? ` (key: ${key})` : '';
-      return {
-        content: [{ type: 'text', text: `Note created: "${fullTitle}"${keyInfo}` }],
-      };
-    } catch (error) {
-      const hint = folder ? ` Folder "${folder}" may not exist.` : '';
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error creating note: ${error instanceof Error ? error.message : 'Unknown error'}.${hint}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  },
-);
+if (!readOnlyMode) {
+  server.tool(
+    'create-note',
+    'Create a new note in Apple Notes. A short unique key is appended to the title for easy lookup later',
+    {
+      title: z.string().min(1).describe('The title of the note'),
+      content: z.string().min(1).describe('The content of the note (markdown supported)'),
+      folder: z.string().optional().describe('Folder to save the note to'),
+      account: accountParam,
+      noKey: z.boolean().optional().describe('If true, do not append a lookup key to the title'),
+    },
+    { destructiveHint: true },
+    async ({ title, content, folder, account, noKey }) => {
+      try {
+        const key = noKey ? null : generateNoteKey();
+        const fullTitle = key ? `${title} ${key}` : title;
+        notesManager.createNote(fullTitle, content, folder, account);
+        const keyInfo = key ? ` (key: ${key})` : '';
+        return {
+          content: [{ type: 'text', text: `Note created: "${fullTitle}"${keyInfo}` }],
+        };
+      } catch (error) {
+        const hint = folder ? ` Folder "${folder}" may not exist.` : '';
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating note: ${error instanceof Error ? error.message : 'Unknown error'}.${hint}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
 
-server.tool(
-  'update-note',
-  'Update the body content of an existing note. Note titles cannot be changed (Apple Notes limitation)',
-  {
-    title: z.string().min(1).describe('The exact title of the note to update'),
-    content: z
-      .string()
-      .min(1)
-      .describe('The new content (markdown supported, replaces entire body)'),
-    folder: z
-      .string()
-      .optional()
-      .describe('Folder to look in (helps disambiguate duplicate titles)'),
-    account: accountParam,
-  },
-  { destructiveHint: true },
-  async ({ title, content, folder, account }) => {
-    try {
-      notesManager.updateNote(title, content, folder, account);
-      return {
-        content: [{ type: 'text', text: `Note updated: "${title}"` }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error updating note: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  },
-);
+  server.tool(
+    'update-note',
+    'Update the body content of an existing note. Note titles cannot be changed (Apple Notes limitation)',
+    {
+      title: z.string().min(1).describe('The exact title of the note to update'),
+      content: z
+        .string()
+        .min(1)
+        .describe('The new content (markdown supported, replaces entire body)'),
+      folder: z
+        .string()
+        .optional()
+        .describe('Folder to look in (helps disambiguate duplicate titles)'),
+      account: accountParam,
+    },
+    { destructiveHint: true },
+    async ({ title, content, folder, account }) => {
+      try {
+        const dupMsg = checkDuplicates(title, folder, account);
+        if (dupMsg) return { content: [{ type: 'text', text: dupMsg }], isError: true };
 
-server.tool(
-  'delete-note',
-  'Delete a note from Apple Notes',
-  {
-    title: z.string().min(1).describe('The exact title of the note to delete'),
-    folder: z
-      .string()
-      .optional()
-      .describe('Folder to look in (helps disambiguate duplicate titles)'),
-    account: accountParam,
-  },
-  { destructiveHint: true },
-  async ({ title, folder, account }) => {
-    try {
-      notesManager.deleteNote(title, folder, account);
-      return {
-        content: [{ type: 'text', text: `Note deleted: "${title}"` }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error deleting note: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  },
-);
+        notesManager.updateNote(title, content, folder, account);
+        return {
+          content: [{ type: 'text', text: `Note updated: "${title}"` }],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error updating note: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
 
-server.tool(
-  'move-note',
-  'Move a note to a different folder',
-  {
-    title: z.string().min(1).describe('The exact title of the note to move'),
-    targetFolder: z.string().min(1).describe('The destination folder name'),
-    sourceFolder: z
-      .string()
-      .optional()
-      .describe('The current folder (helps disambiguate duplicate titles)'),
-    account: accountParam,
-  },
-  { destructiveHint: true },
-  async ({ title, targetFolder, sourceFolder, account }) => {
-    try {
-      notesManager.moveNote(title, targetFolder, sourceFolder, account);
-      return {
-        content: [{ type: 'text', text: `Note "${title}" moved to folder "${targetFolder}"` }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error moving note: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  },
-);
+  server.tool(
+    'delete-note',
+    'Delete a note from Apple Notes',
+    {
+      title: z.string().min(1).describe('The exact title of the note to delete'),
+      folder: z
+        .string()
+        .optional()
+        .describe('Folder to look in (helps disambiguate duplicate titles)'),
+      account: accountParam,
+    },
+    { destructiveHint: true },
+    async ({ title, folder, account }) => {
+      try {
+        const dupMsg = checkDuplicates(title, folder, account);
+        if (dupMsg) return { content: [{ type: 'text', text: dupMsg }], isError: true };
 
-server.tool(
-  'rename-note',
-  'Rename a note by changing its title. The note key is preserved by default. Works by replacing the first line of the note body',
-  {
-    title: z.string().min(1).describe('The current exact title of the note'),
-    newTitle: z.string().min(1).describe('The new title for the note'),
-    folder: z
-      .string()
-      .optional()
-      .describe('Folder to look in (helps disambiguate duplicate titles)'),
-    removeKey: z
-      .boolean()
-      .optional()
-      .describe('If true, do not preserve the lookup key from the old title'),
-    account: accountParam,
-  },
-  { destructiveHint: true },
-  async ({ title, newTitle, folder, removeKey, account }) => {
-    try {
-      const fullNewTitle = notesManager.renameNote(title, newTitle, {
-        folder,
-        removeKey,
-        account,
-      });
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Note renamed: "${title}" → "${fullNewTitle}"`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error renaming note: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  },
-);
+        notesManager.deleteNote(title, folder, account);
+        return {
+          content: [{ type: 'text', text: `Note deleted: "${title}"` }],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error deleting note: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
 
-server.tool(
-  'create-folder',
-  'Create a new folder in Apple Notes',
-  {
-    name: z.string().min(1).describe('The name for the new folder'),
-    account: accountParam,
-  },
-  { destructiveHint: true },
-  async ({ name, account }) => {
-    try {
-      notesManager.createFolder(name, account);
-      return {
-        content: [{ type: 'text', text: `Folder created: "${name}"` }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error creating folder: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  },
-);
+  server.tool(
+    'move-note',
+    'Move a note to a different folder',
+    {
+      title: z.string().min(1).describe('The exact title of the note to move'),
+      targetFolder: z.string().min(1).describe('The destination folder name'),
+      sourceFolder: z
+        .string()
+        .optional()
+        .describe('The current folder (helps disambiguate duplicate titles)'),
+      account: accountParam,
+    },
+    { destructiveHint: true },
+    async ({ title, targetFolder, sourceFolder, account }) => {
+      try {
+        notesManager.moveNote(title, targetFolder, sourceFolder, account);
+        return {
+          content: [{ type: 'text', text: `Note "${title}" moved to folder "${targetFolder}"` }],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error moving note: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    'rename-note',
+    'Rename a note by changing its title. The note key is preserved by default. Works by replacing the first line of the note body',
+    {
+      title: z.string().min(1).describe('The current exact title of the note'),
+      newTitle: z.string().min(1).describe('The new title for the note'),
+      folder: z
+        .string()
+        .optional()
+        .describe('Folder to look in (helps disambiguate duplicate titles)'),
+      removeKey: z
+        .boolean()
+        .optional()
+        .describe('If true, do not preserve the lookup key from the old title'),
+      account: accountParam,
+    },
+    { destructiveHint: true },
+    async ({ title, newTitle, folder, removeKey, account }) => {
+      try {
+        const dupMsg = checkDuplicates(title, folder, account);
+        if (dupMsg) return { content: [{ type: 'text', text: dupMsg }], isError: true };
+
+        const fullNewTitle = notesManager.renameNote(title, newTitle, {
+          folder,
+          removeKey,
+          account,
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Note renamed: "${title}" → "${fullNewTitle}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error renaming note: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    'create-folder',
+    'Create a new folder in Apple Notes',
+    {
+      name: z.string().min(1).describe('The name for the new folder'),
+      account: accountParam,
+    },
+    { destructiveHint: true },
+    async ({ name, account }) => {
+      try {
+        notesManager.createFolder(name, account);
+        return {
+          content: [{ type: 'text', text: `Folder created: "${name}"` }],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error creating folder: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+} // end if (!readOnlyMode)
 
 // --- Utility tools ---
 

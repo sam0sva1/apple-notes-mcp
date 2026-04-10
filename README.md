@@ -243,12 +243,25 @@ The server communicates with Apple Notes via AppleScript (`osascript`) for write
 
 On the first tool call, it auto-detects the Notes account (preferring iCloud, falling back to the first available account). Notes.app will launch automatically when a write tool is first used, not when the server starts.
 
+## Read-only mode
+
+To prevent any modifications to your notes (useful for shared or demo setups):
+
+```bash
+READONLY_MODE=true node build/index.js
+```
+
+In read-only mode, write tools (create, update, delete, move, rename, create-folder) are not registered. Read, search, and index tools remain available.
+
 ## Security
 
 - **No shell injection**: uses `execFileSync` instead of `execSync` — arguments are passed directly to `osascript` without a shell
 - **AppleScript injection prevention**: all user inputs are escaped via `escapeAppleScriptString()` (handles `\`, `"`, `\n`, `\r`, `\t`)
 - **Consistent sanitization**: every interpolated value goes through the same escaping function
 - **No stdout pollution**: all logging goes to stderr, keeping the JSON-RPC channel clean
+- **Secret redaction**: API keys, tokens, passwords, and private keys are automatically redacted before being stored in the FTS index. Original notes are never modified
+- **Content quality filter**: notes that are too short (<50 chars), contain binary data, or consist mostly of base64-encoded content are skipped during indexing
+- **Duplicate title protection**: when operating on a note without specifying a folder, the server checks for duplicate titles and asks for disambiguation instead of silently picking the first match
 
 ## License
 

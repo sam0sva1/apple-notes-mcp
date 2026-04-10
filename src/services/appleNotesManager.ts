@@ -368,4 +368,24 @@ export class AppleNotesManager {
       throw new Error(result.error || 'Failed to create folder');
     }
   }
+
+  countNotesByTitle(title: string, account?: string): number {
+    const escapedTitle = escapeAppleScriptString(title);
+    const escapedAccount = escapeAppleScriptString(this.resolveAccount(account));
+
+    const script = `
+      tell application "Notes"
+        tell account "${escapedAccount}"
+          count of notes whose name is "${escapedTitle}"
+        end tell
+      end tell
+    `;
+
+    const result = runAppleScript(script);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to count notes');
+    }
+
+    return parseInt(result.output, 10) || 0;
+  }
 }

@@ -5,6 +5,7 @@ import { join } from 'path';
 import type { NoteInfo } from '../types.js';
 import type { NotesDatabase } from './notesDatabase.js';
 import { extractNoteText } from '../utils/protobuf.js';
+import { redactSecrets, shouldIndex } from '../utils/contentFilter.js';
 
 const INDEX_DIR = join(homedir(), '.apple-notes-mcp');
 const INDEX_PATH = join(INDEX_DIR, 'index.sqlite');
@@ -130,15 +131,17 @@ export class NotesIndex {
           const buffer = Buffer.from(note.hexdata, 'hex');
           const content = extractNoteText(buffer);
 
-          if (content === null) {
+          if (content === null || !shouldIndex(content)) {
             skipped++;
             continue;
           }
 
+          const safeContent = redactSecrets(content);
+
           // DELETE then INSERT (FTS4 doesn't support INSERT OR REPLACE by uuid)
           this.execSql(`DELETE FROM notes_fts WHERE uuid = '${escapeSql(note.uuid)}';`);
           this.execSql(
-            `INSERT INTO notes_fts (uuid, title, content, folder, account, createdAt, modifiedAt) VALUES ('${escapeSql(note.uuid)}', '${escapeSql(note.title)}', '${escapeSql(content)}', '${escapeSql(note.folder)}', '${escapeSql(note.account)}', '${escapeSql(note.createdAt)}', '${escapeSql(note.modifiedAt)}');`,
+            `INSERT INTO notes_fts (uuid, title, content, folder, account, createdAt, modifiedAt) VALUES ('${escapeSql(note.uuid)}', '${escapeSql(note.title)}', '${escapeSql(safeContent)}', '${escapeSql(note.folder)}', '${escapeSql(note.account)}', '${escapeSql(note.createdAt)}', '${escapeSql(note.modifiedAt)}');`,
           );
           updated++;
         } catch (err) {
