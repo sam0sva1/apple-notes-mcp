@@ -150,31 +150,49 @@ server.tool(
 
 server.tool(
   'search-notes',
-  'Search notes. With FTS index: searches full content. With Full Disk Access: searches titles and previews. Basic mode: titles only',
+  'Search notes by title (always live from Notes.app) and optionally by content (with FTS index). Results are merged for completeness',
   {
     query: z.string().min(1).describe('The search query to match against notes'),
   },
   { readOnlyHint: true },
   async ({ query }) => {
     try {
-      // Priority 1: FTS index (full content search)
+      // AppleScript title search — always runs, always fresh
+      const titleMatches = notesManager.searchNotes(query);
+      const titleSet = new Set(titleMatches);
+
+      // FTS content search — adds body-only matches if index exists
+      let contentMatches: NoteInfo[] = [];
       if (notesIndex.available) {
-        const notes = notesIndex.search(query);
-        return { content: [{ type: 'text', text: formatNoteInfoList(notes, '') }] };
+        contentMatches = notesIndex
+          .search(query)
+          .filter((n) => !titleSet.has(n.title));
       }
 
-      // Priority 2: SQLite snippet search (title + preview)
-      if (notesDb.available) {
-        const notes = notesDb.searchNotes(query);
-        return { content: [{ type: 'text', text: formatNoteInfoList(notes, '') }] };
+      // Format: title matches first (live), then content-only matches (from index)
+      const parts: string[] = [];
+
+      if (titleMatches.length > 0) {
+        parts.push(
+          `Title matches (${titleMatches.length}):\n${titleMatches.map((t) => `- ${t}`).join('\n')}`,
+        );
       }
 
-      // Priority 3: AppleScript title-only search
-      const titles = notesManager.searchNotes(query);
-      const message = titles.length
-        ? `Found ${titles.length} notes:\n${titles.map((t) => `- ${t}`).join('\n')}`
-        : 'No notes found matching your query.';
-      return { content: [{ type: 'text', text: message }] };
+      if (contentMatches.length > 0) {
+        parts.push(
+          `Content matches (${contentMatches.length}):\n${contentMatches.map(formatNoteInfo).join('\n')}`,
+        );
+      }
+
+      if (parts.length === 0) {
+        return {
+          content: [{ type: 'text', text: 'No notes found matching your query.' }],
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: parts.join('\n\n') }],
+      };
     } catch (error) {
       return {
         content: [
