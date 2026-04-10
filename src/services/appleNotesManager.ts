@@ -324,6 +324,68 @@ export class AppleNotesManager {
   }
 
   /**
+   * Renames a note by replacing the first line of its HTML body.
+   * Preserves the note key from the old title by default.
+   * Apple Notes derives the display title from the first line of body.
+   */
+  renameNote(
+    currentTitle: string,
+    newTitle: string,
+    options?: { folder?: string; removeKey?: boolean },
+  ): string {
+    // Get current body
+    const body = this.getNoteContent(currentTitle, options?.folder);
+
+    // Extract key from current title (last word if it matches [a-z0-9]{5})
+    const keyMatch = currentTitle.match(/\s([a-z0-9]{5})$/);
+    const key = keyMatch && !options?.removeKey ? keyMatch[1] : null;
+
+    // Build new title with key
+    const fullNewTitle = key ? `${newTitle} ${key}` : newTitle;
+
+    // Replace first <div>...</div> in body with new title
+    const newBody = body.replace(
+      /^<div>.*?<\/div>/,
+      `<div>${escapeAppleScriptString(fullNewTitle).replace(/\\"/g, '"')}</div>`,
+    );
+
+    // Update body via AppleScript
+    const escapedCurrentTitle = escapeAppleScriptString(currentTitle);
+    const escapedBody = escapeAppleScriptString(newBody);
+    const escapedAccount = escapeAppleScriptString(this.getAccountName());
+
+    let script: string;
+
+    if (options?.folder) {
+      const escapedFolder = escapeAppleScriptString(options.folder);
+      script = `
+        tell application "Notes"
+          tell account "${escapedAccount}"
+            tell folder "${escapedFolder}"
+              set body of note "${escapedCurrentTitle}" to "${escapedBody}"
+            end tell
+          end tell
+        end tell
+      `;
+    } else {
+      script = `
+        tell application "Notes"
+          tell account "${escapedAccount}"
+            set body of note "${escapedCurrentTitle}" to "${escapedBody}"
+          end tell
+        end tell
+      `;
+    }
+
+    const result = runAppleScript(script);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to rename note');
+    }
+
+    return fullNewTitle;
+  }
+
+  /**
    * Creates a new folder in the account.
    */
   createFolder(name: string): void {

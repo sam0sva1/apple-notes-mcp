@@ -164,9 +164,7 @@ server.tool(
       // FTS content search — adds body-only matches if index exists
       let contentMatches: NoteInfo[] = [];
       if (notesIndex.available) {
-        contentMatches = notesIndex
-          .search(query)
-          .filter((n) => !titleSet.has(n.title));
+        contentMatches = notesIndex.search(query).filter((n) => !titleSet.has(n.title));
       }
 
       // Format: title matches first (live), then content-only matches (from index)
@@ -364,6 +362,50 @@ server.tool(
           {
             type: 'text',
             text: `Error moving note: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  'rename-note',
+  'Rename a note by changing its title. The note key is preserved by default. Works by replacing the first line of the note body',
+  {
+    title: z.string().min(1).describe('The current exact title of the note'),
+    newTitle: z.string().min(1).describe('The new title for the note'),
+    folder: z
+      .string()
+      .optional()
+      .describe('Folder to look in (helps disambiguate duplicate titles)'),
+    removeKey: z
+      .boolean()
+      .optional()
+      .describe('If true, do not preserve the lookup key from the old title'),
+  },
+  { destructiveHint: true },
+  async ({ title, newTitle, folder, removeKey }) => {
+    try {
+      const fullNewTitle = notesManager.renameNote(title, newTitle, {
+        folder,
+        removeKey,
+      });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Note renamed: "${title}" → "${fullNewTitle}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error renaming note: ${error instanceof Error ? error.message : 'Unknown error'}`,
           },
         ],
         isError: true,

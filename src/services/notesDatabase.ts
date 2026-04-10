@@ -126,7 +126,11 @@ export class NotesDatabase {
    * Returns notes with their raw ZDATA hex for protobuf extraction.
    * If afterDate is provided, only returns notes modified after that date.
    */
-  getNotesForIndexing(afterDate?: string, limit?: number, offset?: number): Array<{
+  getNotesForIndexing(
+    afterDate?: string,
+    limit?: number,
+    offset?: number,
+  ): Array<{
     uuid: string;
     title: string;
     folder: string;

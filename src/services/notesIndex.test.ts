@@ -70,10 +70,7 @@ describe('NotesIndex', () => {
       return {
         available: true,
         // First call returns notes, second call returns [] (end of chunks)
-        getNotesForIndexing: vi
-          .fn()
-          .mockReturnValueOnce(notes)
-          .mockReturnValue([]),
+        getNotesForIndexing: vi.fn().mockReturnValueOnce(notes).mockReturnValue([]),
         getAllNoteUuids: vi.fn().mockReturnValue(liveUuids),
       };
     }
@@ -212,7 +209,10 @@ describe('NotesIndex', () => {
 
       // Should have called DELETE for uuid-deleted
       const deleteCalls = mockExecFileSync.mock.calls.filter(
-        (c: string[][]) => typeof c[1]?.[1] === 'string' && c[1][1].includes('DELETE') && c[1][1].includes('uuid-deleted'),
+        (c: string[][]) =>
+          typeof c[1]?.[1] === 'string' &&
+          c[1][1].includes('DELETE') &&
+          c[1][1].includes('uuid-deleted'),
       );
       expect(deleteCalls.length).toBe(1);
     });
@@ -239,11 +239,7 @@ describe('NotesIndex', () => {
       const index = new NotesIndex(mockDb as never);
       index.buildIndex();
 
-      expect(mockDb.getNotesForIndexing).toHaveBeenCalledWith(
-        '2024-01-10T00:00:00Z',
-        100,
-        0,
-      );
+      expect(mockDb.getNotesForIndexing).toHaveBeenCalledWith('2024-01-10T00:00:00Z', 100, 0);
     });
   });
 
@@ -328,9 +324,7 @@ describe('NotesIndex', () => {
     it('returns status with note count and size', async () => {
       mockExistsSync.mockReturnValue(true);
       mockStatSync.mockReturnValue({ size: 1024 });
-      mockExecFileSync
-        .mockReturnValueOnce('42')
-        .mockReturnValueOnce('2024-01-15T10:00:00Z');
+      mockExecFileSync.mockReturnValueOnce('42').mockReturnValueOnce('2024-01-15T10:00:00Z');
 
       const { NotesIndex } = await import('./notesIndex.js');
       const mockDb = { available: true } as never;

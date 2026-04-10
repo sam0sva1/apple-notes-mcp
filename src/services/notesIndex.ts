@@ -114,11 +114,7 @@ export class NotesIndex {
 
     // Process notes in chunks to avoid memory/buffer issues
     while (true) {
-      const notes = this.notesDb.getNotesForIndexing(
-        lastSync ?? undefined,
-        chunkSize,
-        offset,
-      );
+      const notes = this.notesDb.getNotesForIndexing(lastSync ?? undefined, chunkSize, offset);
 
       if (notes.length === 0) break;
 
@@ -153,9 +149,7 @@ export class NotesIndex {
 
       // Update lastSync after each chunk — interrupted runs resume from here
       const now = new Date().toISOString();
-      this.execSql(
-        `INSERT OR REPLACE INTO meta (key, value) VALUES ('lastSync', '${now}');`,
-      );
+      this.execSql(`INSERT OR REPLACE INTO meta (key, value) VALUES ('lastSync', '${now}');`);
 
       offset += notes.length;
     }
