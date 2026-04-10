@@ -166,7 +166,7 @@ export class NotesIndex {
     const ftsQuery = escapeFtsQuery(query);
 
     try {
-      const sql = `SELECT uuid, title, snippet(notes_fts, 2, '«', '»', '...', 50) as snippet, folder, account, createdAt, modifiedAt FROM notes_fts WHERE notes_fts MATCH '${escapeSql(ftsQuery)}';`;
+      const sql = `SELECT uuid, title, substr(content, 1, 200) as snippet, folder, account, createdAt, modifiedAt FROM notes_fts WHERE notes_fts MATCH '${escapeSql(ftsQuery)}';`;
       const output = execFileSync('sqlite3', ['-json', INDEX_PATH, sql], {
         encoding: 'utf8',
         timeout: 10000,

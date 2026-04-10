@@ -56,6 +56,7 @@ export class NotesDatabase {
     const output = execFileSync('sqlite3', ['-json', DB_PATH, sql], {
       encoding: 'utf8',
       timeout: 30000,
+      maxBuffer: 100 * 1024 * 1024, // 100MB — hex(ZDATA) for many notes can be large
     });
 
     const trimmed = output.trim();
