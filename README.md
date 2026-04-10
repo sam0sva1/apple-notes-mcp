@@ -172,6 +172,18 @@ For existing notes, use `generate-key` to get a key, then manually add it to the
 
 Keys are designed for easy voice input: only lowercase letters and digits, no special characters, no case sensitivity.
 
+## Sync delay
+
+Apple Notes uses an internal database (NoteStore.sqlite) that updates asynchronously. When you create or modify a note through this server (via AppleScript), the change is immediately visible to AppleScript but may take seconds to minutes to appear in the SQLite database.
+
+**What this means in practice:**
+
+- **Search always works** — `search-notes` always queries AppleScript for title matches (live data), so newly created notes and keys are found immediately
+- **FTS content search may lag** — full-text search uses the FTS index, which reflects the SQLite database state. Run `index-notes` to update it after making changes
+- **Metadata may be delayed** — `list-notes` in full mode reads from SQLite, so new notes may briefly appear without metadata
+
+If you edited notes on another device, open Notes.app and wait for iCloud sync to complete before running `index-notes`.
+
 ## Limitations
 
 Apple Notes exposes a minimal AppleScript API compared to apps like Mail or Calendar. The following limitations are inherent to Apple's automation interface — not design choices of this server.
