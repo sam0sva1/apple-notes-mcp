@@ -39,6 +39,21 @@ Add to your `claude_desktop_config.json`:
 claude mcp add apple-notes -- node /absolute/path/to/apple-notes-mcp/build/index.js
 ```
 
+### Codex (OpenAI)
+
+```bash
+codex mcp add -- node /absolute/path/to/apple-notes-mcp/build/index.js
+```
+
+### Other MCP clients
+
+Any MCP client that supports stdio transport can run this server:
+
+```
+command: node
+args: ["/absolute/path/to/apple-notes-mcp/build/index.js"]
+```
+
 ## Operating modes
 
 The server operates in three modes depending on access level:
