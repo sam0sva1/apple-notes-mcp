@@ -210,8 +210,13 @@ server.tool(
   { readOnlyHint: true },
   async ({ query, account }) => {
     try {
-      // AppleScript title search — always runs, always fresh
-      const titleMatches = notesManager.searchNotes(query, account);
+      // AppleScript title search — try first, but don't fail if unavailable
+      let titleMatches: string[] = [];
+      try {
+        titleMatches = notesManager.searchNotes(query, account);
+      } catch (asErr) {
+        console.error('AppleScript search failed, using FTS/SQLite only:', asErr);
+      }
       const titleSet = new Set(titleMatches);
 
       // FTS content search — adds body-only matches if index exists
@@ -221,6 +226,17 @@ server.tool(
           .search(query)
           .filter((n) => !titleSet.has(n.title))
           .filter((n) => !account || n.account === account);
+      }
+
+      // SQLite fallback — if no AppleScript and no FTS
+      if (titleMatches.length === 0 && contentMatches.length === 0 && notesDb.available) {
+        const sqlResults = notesDb.searchNotes(query);
+        const filtered = account ? sqlResults.filter((n) => n.account === account) : sqlResults;
+        if (filtered.length > 0) {
+          return {
+            content: [{ type: 'text', text: formatNoteInfoList(filtered, '') }],
+          };
+        }
       }
 
       // Format: title matches first (live), then content-only matches (from index)

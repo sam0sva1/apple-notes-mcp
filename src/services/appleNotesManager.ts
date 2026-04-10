@@ -14,10 +14,14 @@ export class AppleNotesManager {
       return this.defaultAccountName;
     }
 
-    const accounts = this.listAccounts();
-    if (accounts.length > 0) {
-      this.defaultAccountName = accounts.includes('iCloud') ? 'iCloud' : accounts[0];
-    } else {
+    try {
+      const accounts = this.listAccounts();
+      if (accounts.length > 0) {
+        this.defaultAccountName = accounts.includes('iCloud') ? 'iCloud' : accounts[0];
+      } else {
+        this.defaultAccountName = 'iCloud';
+      }
+    } catch {
       console.error('Failed to detect Notes accounts, falling back to "iCloud"');
       this.defaultAccountName = 'iCloud';
     }
